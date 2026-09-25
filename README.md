@@ -1,9 +1,10 @@
-# Spring PetClinic · no harness
+# Spring PetClinic · OpenSpec
 
 ## 1. Setup
 
 - An agent: Claude Code, opencode or Codex
 - Java 17+
+- Node 20+ and `npm i -g @fission-ai/openspec@1.13.2`
 
 ```bash
 ./mvnw -B test -Dtest='!*Postgres*,!*MySql*' -Dsurefire.failIfNoSpecifiedTests=false
@@ -13,7 +14,15 @@ git checkout -b my-cancel-visit
 
 ## 2. Steps
 
-No harness. Prompt your agent with the task below.
+Read `openspec/constitution.md` first. Review each step's output before the next.
+
+| Step | Claude Code | opencode | Codex |
+|---|---|---|---|
+| propose | `/opsx:propose` | `/opsx-propose` | `$openspec-propose` |
+| apply | `/opsx:apply` | `/opsx-apply` | `$openspec-apply-change` |
+| archive | `/opsx:archive` | `/opsx-archive` | `$openspec-archive-change` |
+
+Before archive: `openspec validate <change> --strict`.
 
 ## 3. Task
 
