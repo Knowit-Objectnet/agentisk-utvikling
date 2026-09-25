@@ -90,7 +90,7 @@ This constitution supersedes conflicting habits and prior precedent in this fork
   expanding guidance, PATCH for wording.
 - **Compliance**: every plan MUST include a constitution check against Principles I–V; a violation
   MUST be justified in the plan's Complexity Tracking table or removed.
-- **Runtime guidance**: `CLAUDE.md` holds operational detail (commands, gotchas, layout) and MUST
+- **Runtime guidance**: `AGENTS.md` holds operational detail (commands, gotchas, layout) and MUST
   NOT contradict this file.
 
 **Version**: 1.0.0 | **Ratified**: 2026-09-25 | **Last Amended**: 2026-09-25
