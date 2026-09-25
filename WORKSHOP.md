@@ -37,7 +37,7 @@ git checkout -b my-cancel-visit
 ```
 
 Both harness branches ship a constitution (`.specify/memory/constitution.md` or
-`openspec/constitution.md`), and `CLAUDE.md` lists the build gotchas. Read both before you start.
+`openspec/constitution.md`), and `AGENTS.md` lists the build gotchas. Read both before you start.
 
 ## 3. Main task (~90 min): cancel an upcoming visit
 
