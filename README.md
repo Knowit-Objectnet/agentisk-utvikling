@@ -1,9 +1,10 @@
-# Spring PetClinic · no harness
+# Spring PetClinic · Spec Kit
 
 ## 1. Setup
 
 - An agent: Claude Code, opencode or Codex
 - Java 17+
+- bash (WSL/Git Bash on Windows)
 
 ```bash
 ./mvnw -B test -Dtest='!*Postgres*,!*MySql*' -Dsurefire.failIfNoSpecifiedTests=false
@@ -13,7 +14,16 @@ git checkout -b my-cancel-visit
 
 ## 2. Steps
 
-No harness. Prompt your agent with the task below.
+Read `.specify/memory/constitution.md` first. Review each step's output before the next.
+
+| Step | Claude Code | opencode | Codex |
+|---|---|---|---|
+| specify | `/speckit-specify` | `/speckit.specify` | `$speckit-specify` |
+| clarify | `/speckit-clarify` | `/speckit.clarify` | `$speckit-clarify` |
+| plan | `/speckit-plan` | `/speckit.plan` | `$speckit-plan` |
+| tasks | `/speckit-tasks` | `/speckit.tasks` | `$speckit-tasks` |
+| analyze | `/speckit-analyze` | `/speckit.analyze` | `$speckit-analyze` |
+| implement | `/speckit-implement` | `/speckit.implement` | `$speckit-implement` |
 
 ## 3. Task
 
