@@ -1,0 +1,54 @@
+schema: spec-driven
+
+context: |
+  Project: Spring PetClinic (agentic-workshop fork) — Spring Boot 4 sample app.
+  Owners have pets, pets have visits, vets have specialties.
+
+  Tech stack: Java 17+, Spring Boot 4.1, Spring MVC + Thymeleaf, Spring Data JPA, Bean Validation,
+  H2 (default), MySQL and Postgres profiles, Caffeine/JCache, Bootstrap webjars, Maven wrapper.
+
+  Architecture:
+    - owner/ — Owner (aggregate root) → Pet → Visit; OwnerController, PetController, VisitController;
+      OwnerRepository. There is no VisitRepository; visits are saved through the owner.
+    - vet/ — Vet, Specialty, VetController, VetRepository (cached)
+    - system/ — welcome, error, cache and web config
+    - templates/ — Thymeleaf; fragments/layout.html is the shell; inputField/selectField fragments
+    - db/{h2,mysql,postgres}/ — schema.sql + data.sql per database
+
+  Core principles (full text, binding: openspec/constitution.md — read it before proposing):
+    1. Sample-App Simplicity — existing stack only, no new runtime deps, no service/DTO layers
+    2. Aggregate Boundaries — pets and visits change through Owner/OwnerRepository
+    3. Test Every Behaviour — @WebMvcTest for controllers, @DataJpaTest (ClinicServiceTests) for persistence
+    4. Every Database, Every Language — all 3 schema.sql files, all 11 messages*.properties files
+    5. Accessible, Consistent UI — reuse Bootstrap fragments; state changes via POST forms
+
+  Build gotchas:
+    - Spring Java Format is validated in the validate phase: run ./mvnw spring-javaformat:apply
+    - nohttp checkstyle scans every file in the repo, including openspec/: never write http:// URLs
+    - I18nPropertiesSyncTest fails on literal text in templates and on missing message keys
+
+rules:
+  proposal:
+    - Include a "Non-goals" section to keep scope tight
+    - State which screens change and which database tables change
+  design:
+    - Name the entity, controller, template and schema files that change
+    - Justify any new repository, package or dependency against Principle I and II
+  specs:
+    - Every requirement has at least one "#### Scenario:" in WHEN/THEN form
+    - Cover the unhappy paths (validation errors, not-found ids, forbidden state transitions)
+  tasks:
+    - Include schema changes for h2, mysql and postgres as separate tasks
+    - "Include adding message keys to messages.properties and the 9 translated messages_*.properties files (messages_en.properties stays empty)"
+    - Include tests in the matching *ControllerTests / ClinicServiceTests class
+    - "End with verification tasks: spring-javaformat:apply, the fast test suite, ./mvnw -B validate"
+
+operations:
+  apply:
+    guidance:
+      - Fast suite - ./mvnw -B test -Dtest='!*Postgres*,!*MySql*' -Dsurefire.failIfNoSpecifiedTests=false
+      - Run ./mvnw spring-javaformat:apply before running tests
+  archive:
+    guidance:
+      - Confirm every scenario in the change's spec deltas is covered by a test
+      - Confirm all three schema.sql files and all message bundles were updated
