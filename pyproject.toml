@@ -1,0 +1,107 @@
+[build-system]
+# Downgraded to avoid "InvalidDistribution" crash on `make release`
+requires = ["hatchling~=1.21.1"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ihatemoney"
+version = "7.2.2.dev0"
+requires-python = ">=3.11"
+description = "A simple shared budget manager web application."
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    {"name" = "Alexis Métaireau & contributors", email = "alexis@notmyidea.org"},
+]
+keywords = ["web", "budget"]
+classifiers = [
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Internet :: WWW/HTTP :: WSGI :: Application",
+]
+
+dependencies = [
+    "cachetools~=6.2.4",
+    "debts~=0.5",  # Last update : 2019
+    "email_validator~=2.3.0",
+    "Flask~=3.1.2",
+    "Flask-Babel~=4.0.0",     # last update oct. 23
+    "Flask-Cors~=6.0.2",
+    "Flask-Limiter~=4.1.1",
+    "Flask-Mail~=0.10.0",
+    "Flask-Migrate~=4.1.0", # Not following semantic versioning (e.g. https://github.com/miguelgrinberg/flask-migrate/commit/1af28ba273de6c88544623b8dc02dd539340294b)
+    "Flask-RESTful~=0.3.10",  # last update may 23
+    "Flask-SQLAlchemy~=3.1.1",
+    "Flask-Talisman~=1.1.0",  # last update aug. 23
+    "Flask-WTF~=1.2.2",
+    "itsdangerous~=2.2.0",
+    "Jinja2~=3.1.6",
+    "python-dateutil",
+    "qrcode~=8.2",
+    "requests~=2.32.5",  # Used only by currency convertor
+    "SQLAlchemy~=2.0.45",
+    "SQLAlchemy-Continuum~=1.5.2",
+    "Werkzeug~=3.1.5",
+    "WTForms~=3.2.1",]
+
+[project.optional-dependencies]
+database = [
+    # Python 3.11 support starts in 2.9.2
+    "psycopg2-binary~=2.9.11",
+    "PyMySQL~=1.1.2",
+]
+dev = [
+    "ruff~=0.14.13",
+    "isort~=7.0.0",
+    "vermin~=1.8.0",
+    "pytest~=9.0.2",
+    "pytest-flask~=1.3.0",   # last update oct. 23
+    "zest.releaser~=9.8.0",
+]
+doc = [
+    "Sphinx~=9.0.4",  # Last version to support Py 3.11
+    "docutils~=0.22.4",
+    "myst-parser~=5.0.0",
+]
+
+[project.urls]
+"Source Code" = "https://github.com/spiral-project/ihatemoney"
+"Main instance" = "https://ihatemoney.org/"
+"Mobile app" = "https://ihatemoney.org/mobile"
+"Documentation" = "https://ihatemoney.readthedocs.io/en/latest/"
+
+[project.scripts]
+ihatemoney = "ihatemoney.manage:cli"
+
+[tool.hatch.build.hooks.custom]
+dependencies = [
+    # Babel is needed to compile translations catalogs at package build time
+    "Babel>=2.13.1",
+
+    # Babel 2.14 does not directly depend on setuptools
+    # https://github.com/python-babel/babel/blob/40e60a1f6cf178d9f57fcc14f157ea1b2ab77361/CHANGES.rst?plain=1#L22-L24
+    # and neither python 3.12 due to PEP 632
+    # https://peps.python.org/pep-0632/
+    "setuptools; python_version>='3.12'",
+]
+
+[tool.hatch.build]
+artifacts = ["ihatemoney/translations/**/*.mo"]
+include = [
+    "ihatemoney/",
+    "LICENSE",
+    "CHANGELOG.md",
+    "README.md",
+    "SECURITY.md",
+]
+
+
+[tool.ruff]
+exclude = ["ihatemoney/migrations"]
+
+[tool.ruff.lint]
+ignore = ["RUF012", "DTZ007", "UP031", "BLE001", "DTZ011", "RUF013", "B006", "DTZ002", "DTZ005", "UP012", "UP024"]

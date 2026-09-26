@@ -1,0 +1,761 @@
+import os
+import smtplib
+import socket
+from unittest.mock import MagicMock, patch
+
+import pytest
+from sqlalchemy import orm
+from werkzeug.security import check_password_hash
+
+from ihatemoney import models
+from ihatemoney.currency_convertor import CurrencyConverter
+from ihatemoney.manage import (
+    delete_project,
+    generate_config,
+    get_project_count,
+    password_hash,
+)
+from ihatemoney.run import load_configuration
+from ihatemoney.tests.common.ihatemoney_testcase import BaseTestCase, IhatemoneyTestCase
+from ihatemoney.utils import (
+    eval_arithmetic_expression,
+    get_owers_label,
+)
+
+# Unset configuration file env var if previously set
+os.environ.pop("IHATEMONEY_SETTINGS_FILE_PATH", None)
+
+__HERE__ = os.path.dirname(os.path.abspath(__file__))
+
+
+class TestConfiguration(BaseTestCase):
+    def test_default_configuration(self):
+        """Test that default settings are loaded when no other configuration file is specified"""
+        assert not self.app.config["DEBUG"]
+        assert not self.app.config["SQLALCHEMY_TRACK_MODIFICATIONS"]
+        assert self.app.config["MAIL_DEFAULT_SENDER"] == (
+            "Budget manager <admin@example.com>"
+        )
+        assert self.app.config["ACTIVATE_DEMO_PROJECT"]
+        assert self.app.config["ALLOW_PUBLIC_PROJECT_CREATION"]
+        assert not self.app.config["ACTIVATE_ADMIN_DASHBOARD"]
+        assert not self.app.config["ENABLE_CAPTCHA"]
+
+    def test_env_var_configuration_file(self):
+        """Test that settings are loaded from a configuration file specified
+        with an environment variable."""
+        os.environ["IHATEMONEY_SETTINGS_FILE_PATH"] = os.path.join(
+            __HERE__, "ihatemoney_envvar.cfg"
+        )
+        load_configuration(self.app)
+        assert self.app.config["SECRET_KEY"] == "lalatra"
+
+        # Test that the specified configuration file is loaded
+        # even if the default configuration file ihatemoney.cfg exists
+        # in the current directory.
+        os.environ["IHATEMONEY_SETTINGS_FILE_PATH"] = os.path.join(
+            __HERE__, "ihatemoney_envvar.cfg"
+        )
+        self.app.config.root_path = __HERE__
+        load_configuration(self.app)
+        assert self.app.config["SECRET_KEY"] == "lalatra"
+
+        os.environ.pop("IHATEMONEY_SETTINGS_FILE_PATH", None)
+
+    def test_default_configuration_file(self):
+        """Test that settings are loaded from a configuration file if one is found
+        in the current directory."""
+        self.app.config.root_path = __HERE__
+        load_configuration(self.app)
+        assert self.app.config["SECRET_KEY"] == "supersecret"
+
+
+class TestServer(IhatemoneyTestCase):
+    def test_homepage(self):
+        # See https://github.com/spiral-project/ihatemoney/pull/358
+        self.app.config["APPLICATION_ROOT"] = "/"
+        req = self.client.get("/")
+        self.assertStatus(200, req)
+
+    def test_unprefixed(self):
+        self.app.config["APPLICATION_ROOT"] = "/"
+        req = self.client.get("/foo/")
+        self.assertStatus(303, req)
+
+    def test_prefixed(self):
+        self.app.config["APPLICATION_ROOT"] = "/foo"
+        req = self.client.get("/foo/")
+        self.assertStatus(200, req)
+
+
+class TestCommand(BaseTestCase):
+    def test_generate_config(self):
+        """Simply checks that all config file generation
+        - raise no exception
+        - produce something non-empty
+        """
+        runner = self.app.test_cli_runner()
+        for config_file in generate_config.params[0].type.choices:
+            result = runner.invoke(generate_config, config_file)
+            assert len(result.output.strip()) != 0
+
+    def test_generate_password_hash(self):
+        runner = self.app.test_cli_runner()
+        with patch("getpass.getpass", new=lambda prompt: "secret"):
+            result = runner.invoke(password_hash)
+            assert check_password_hash(result.output.strip(), "secret")
+
+    def test_demo_project_deletion(self):
+        self.create_project("demo")
+        assert self.get_project("demo").name == "demo"
+
+        runner = self.app.test_cli_runner()
+        runner.invoke(delete_project, "demo")
+
+        assert len(models.Project.query.all()) == 0
+
+
+class TestModels(IhatemoneyTestCase):
+    def test_weighted_bills(self):
+        """Test the SQL request that fetch all bills and weights"""
+        self.post_project("raclette")
+
+        # add members
+        self.client.post("/raclette/members/add", data={"name": "zorglub", "weight": 2})
+        self.client.post("/raclette/members/add", data={"name": "jeanne"})
+        self.client.post("/raclette/members/add", data={"name": "tata"})
+        # Add a member with a balance=0 :
+        self.client.post("/raclette/members/add", data={"name": "pépé"})
+
+        # create bills
+        self.client.post(
+            "/raclette/add",
+            data={
+                "date": "2011-08-10",
+                "what": "fromage à raclette",
+                "payer": 1,
+                "payed_for": [1, 2, 3],
+                "bill_type": "Expense",
+                "amount": "10.0",
+            },
+        )
+
+        self.client.post(
+            "/raclette/add",
+            data={
+                "date": "2011-08-10",
+                "what": "red wine",
+                "payer": 2,
+                "payed_for": [1],
+                "bill_type": "Expense",
+                "amount": "20",
+            },
+        )
+
+        self.client.post(
+            "/raclette/add",
+            data={
+                "date": "2011-08-10",
+                "what": "delicatessen",
+                "payer": 1,
+                "payed_for": [1, 2],
+                "bill_type": "Expense",
+                "amount": "10",
+            },
+        )
+        project = models.Project.query.get_by_name(name="raclette")
+        for weight, bill in project.get_bill_weights().all():
+            if bill.what == "red wine":
+                pay_each_expected = 20 / 2
+                assert bill.amount / weight == pay_each_expected
+            if bill.what == "fromage à raclette":
+                pay_each_expected = 10 / 4
+                assert bill.amount / weight == pay_each_expected
+            if bill.what == "delicatessen":
+                pay_each_expected = 10 / 3
+                assert bill.amount / weight == pay_each_expected
+
+    def test_bill_pay_each(self):
+        self.post_project("raclette")
+
+        # add members
+        self.client.post("/raclette/members/add", data={"name": "zorglub", "weight": 2})
+        self.client.post("/raclette/members/add", data={"name": "jeanne"})
+        self.client.post("/raclette/members/add", data={"name": "tata"})
+        # Add a member with a balance=0 :
+        self.client.post("/raclette/members/add", data={"name": "pépé"})
+
+        # create bills
+        self.client.post(
+            "/raclette/add",
+            data={
+                "date": "2011-08-10",
+                "what": "fromage à raclette",
+                "payer": 1,
+                "payed_for": [1, 2, 3],
+                "bill_type": "Expense",
+                "amount": "10.0",
+            },
+        )
+
+        self.client.post(
+            "/raclette/add",
+            data={
+                "date": "2011-08-10",
+                "what": "red wine",
+                "payer": 2,
+                "payed_for": [1],
+                "bill_type": "Expense",
+                "amount": "20",
+            },
+        )
+
+        self.client.post(
+            "/raclette/add",
+            data={
+                "date": "2011-08-10",
+                "what": "delicatessen",
+                "payer": 1,
+                "payed_for": [1, 2],
+                "bill_type": "Expense",
+                "amount": "10",
+            },
+        )
+
+        project = models.Project.query.get_by_name(name="raclette")
+        zorglub = models.Person.query.get_by_name(name="zorglub", project=project)
+        zorglub_bills = models.Bill.query.options(
+            orm.subqueryload(models.Bill.owers)
+        ).filter(models.Bill.owers.contains(zorglub))
+        for bill in zorglub_bills.all():
+            if bill.what == "red wine":
+                pay_each_expected = 20 / 2
+                assert bill.pay_each() == pay_each_expected
+            if bill.what == "fromage à raclette":
+                pay_each_expected = 10 / 4
+                assert bill.pay_each() == pay_each_expected
+            if bill.what == "delicatessen":
+                pay_each_expected = 10 / 3
+                assert bill.pay_each() == pay_each_expected
+
+    def test_demo_project_count(self):
+        """Test command the get-project-count"""
+        self.post_project("raclette")
+
+        # add members
+        self.client.post("/raclette/members/add", data={"name": "zorglub", "weight": 2})
+        self.client.post("/raclette/members/add", data={"name": "fred"})
+        self.client.post("/raclette/members/add", data={"name": "tata"})
+        self.client.post("/raclette/members/add", data={"name": "pépé"})
+
+        # create bills
+        self.client.post(
+            "/raclette/add",
+            data={
+                "date": "2011-08-10",
+                "what": "fromage à raclette",
+                "payer": 1,
+                "payed_for": [1, 2, 3],
+                "amount": "10.0",
+            },
+        )
+
+        self.client.post(
+            "/raclette/add",
+            data={
+                "date": "2011-08-10",
+                "what": "red wine",
+                "payer": 2,
+                "payed_for": [1],
+                "amount": "20",
+            },
+        )
+
+        assert self.get_project("raclette").has_bills()
+
+        # Now check the different parameters
+        runner = self.app.test_cli_runner()
+        result0 = runner.invoke(get_project_count)
+        assert result0.output.strip() == "Number of projects: 1"
+
+        # With more than 1 bill, without printing emails
+        result1 = runner.invoke(get_project_count, "False 1")
+        assert result1.output.strip() == "Number of projects: 1"
+
+        # With more than 2 bill, without printing emails
+        result2 = runner.invoke(get_project_count, "False 2")
+        assert result2.output.strip() == "Number of projects: 0"
+
+        # With more than 0 days old
+        result3 = runner.invoke(get_project_count, "False 0 0")
+        assert result3.output.strip() == "Number of projects: 0"
+
+        result4 = runner.invoke(get_project_count, "False 0 20000")
+        assert result4.output.strip() == "Number of projects: 1"
+
+        # Print emails
+        result5 = runner.invoke(get_project_count, "True")
+        assert "raclette@notmyidea.org" in result5.output
+
+
+class TestBillFiltering(IhatemoneyTestCase):
+    def test_filter_by_payer(self):
+        """Test filtering by payer ID"""
+        self.post_project("raclette")
+
+        # add members
+        self.client.post("/raclette/members/add", data={"name": "Alice"})
+        self.client.post("/raclette/members/add", data={"name": "Bob"})
+
+        # create bills
+        self.client.post(
+            "/raclette/add",
+            data={
+                "date": "2024-03-01",
+                "what": "Cheese",
+                "payer": 1,
+                "payed_for": [1, 2],
+                "bill_type": "Expense",
+                "amount": "15.0",
+            },
+        )
+        self.client.post(
+            "/raclette/add",
+            data={
+                "date": "2024-03-05",
+                "what": "Wine",
+                "payer": 2,
+                "payed_for": [1, 2],
+                "bill_type": "Expense",
+                "amount": "25.0",
+            },
+        )
+
+        # alice paid for cheese
+        bills = models.Bill.query.filter(models.Bill.payer_id == 1).all()
+        assert len(bills) == 1
+        assert bills[0].what == "Cheese"
+
+        # bob paid for wine
+        bills = models.Bill.query.filter(models.Bill.payer_id == 2).all()
+        assert len(bills) == 1
+        assert bills[0].what == "Wine"
+
+    def test_filter_by_amount_range(self):
+        """Test filtering by amount range"""
+        self.post_project("raclette")
+
+        # add members
+        self.client.post("/raclette/members/add", data={"name": "Alice"})
+        self.client.post("/raclette/members/add", data={"name": "Bob"})
+
+        # create bills
+        self.client.post(
+            "/raclette/add",
+            data={
+                "date": "2024-03-01",
+                "what": "Cheese",
+                "payer": 1,
+                "payed_for": [1, 2],
+                "bill_type": "Expense",
+                "amount": "15.0",
+            },
+        )
+        self.client.post(
+            "/raclette/add",
+            data={
+                "date": "2024-03-05",
+                "what": "Wine",
+                "payer": 2,
+                "payed_for": [1, 2],
+                "bill_type": "Expense",
+                "amount": "25.0",
+            },
+        )
+
+        # only wine is more than 20
+        bills = models.Bill.query.filter(models.Bill.amount >= 20).all()
+        assert len(bills) == 1
+        assert bills[0].what == "Wine"
+
+        # only cheese is less than 20
+        bills = models.Bill.query.filter(models.Bill.amount <= 20).all()
+        assert len(bills) == 1
+        assert bills[0].what == "Cheese"
+
+    def test_filter_by_date_range(self):
+        """Test filtering by date range"""
+        self.post_project("raclette")
+
+        # add members
+        self.client.post("/raclette/members/add", data={"name": "Alice"})
+        self.client.post("/raclette/members/add", data={"name": "Bob"})
+
+        # create bills
+        self.client.post(
+            "/raclette/add",
+            data={
+                "date": "2024-03-01",
+                "what": "Cheese",
+                "payer": 1,
+                "payed_for": [1, 2],
+                "bill_type": "Expense",
+                "amount": "15.0",
+            },
+        )
+        self.client.post(
+            "/raclette/add",
+            data={
+                "date": "2024-03-05",
+                "what": "Wine",
+                "payer": 2,
+                "payed_for": [1, 2],
+                "bill_type": "Expense",
+                "amount": "25.0",
+            },
+        )
+
+        # wine is March 5th
+        bills = models.Bill.query.filter(models.Bill.date >= "2024-03-02").all()
+        assert len(bills) == 1
+        assert bills[0].what == "Wine"
+
+        # cheese is March 1st
+        bills = models.Bill.query.filter(models.Bill.date <= "2024-03-04").all()
+        assert len(bills) == 1
+        assert bills[0].what == "Cheese"
+
+    def test_filter_by_search_term(self):
+        """Test filtering by search query"""
+        self.post_project("raclette")
+
+        # add members
+        self.client.post("/raclette/members/add", data={"name": "Alice"})
+        self.client.post("/raclette/members/add", data={"name": "Bob"})
+
+        # create bills
+        self.client.post(
+            "/raclette/add",
+            data={
+                "date": "2024-03-01",
+                "what": "Cheese",
+                "payer": 1,
+                "payed_for": [1, 2],
+                "bill_type": "Expense",
+                "amount": "15.0",
+            },
+        )
+        self.client.post(
+            "/raclette/add",
+            data={
+                "date": "2024-03-05",
+                "what": "Wine",
+                "payer": 2,
+                "payed_for": [1, 2],
+                "bill_type": "Expense",
+                "amount": "25.0",
+            },
+        )
+
+        bills = models.Bill.query.filter(models.Bill.what.ilike("%Cheese%")).all()
+        assert len(bills) == 1
+        assert bills[0].what == "Cheese"
+
+        bills = models.Bill.query.filter(models.Bill.what.ilike("%Che%")).all()
+        assert len(bills) == 1
+        assert bills[0].what == "Cheese"
+
+        bills = models.Bill.query.filter(models.Bill.what.ilike("%Pizza%")).all()
+        assert len(bills) == 0
+
+    def test_filter_combination(self):
+        """Test filtering by multiple criteria"""
+
+        self.post_project("raclette")
+
+        # add members
+        self.client.post("/raclette/members/add", data={"name": "Alice"})
+        self.client.post("/raclette/members/add", data={"name": "Bob"})
+
+        # create bills
+        self.client.post(
+            "/raclette/add",
+            data={
+                "date": "2024-03-01",
+                "what": "Cheese",
+                "payer": 1,
+                "payed_for": [1, 2],
+                "bill_type": "Expense",
+                "amount": "15.0",
+            },
+        )
+        self.client.post(
+            "/raclette/add",
+            data={
+                "date": "2024-03-05",
+                "what": "Wine",
+                "payer": 2,
+                "payed_for": [1, 2],
+                "bill_type": "Expense",
+                "amount": "25.0",
+            },
+        )
+
+        # only alice's cheese should match
+        bills = models.Bill.query.filter(
+            models.Bill.payer_id == 1, models.Bill.amount <= 20
+        ).all()
+        assert len(bills) == 1
+        assert bills[0].what == "Cheese"
+
+        # no bills match
+        bills = models.Bill.query.filter(
+            models.Bill.payer_id == 2, models.Bill.amount <= 20
+        ).all()
+        assert len(bills) == 0
+
+
+class TestEmailFailure(IhatemoneyTestCase):
+    def test_creation_email_failure_smtp(self):
+        self.login("raclette")
+        with patch.object(
+            self.app.mail, "send", MagicMock(side_effect=smtplib.SMTPException)
+        ):
+            resp = self.post_project("raclette")
+        # Check that an error message is displayed
+        assert (
+            "We tried to send you an reminder email, but there was an error"
+            in resp.data.decode("utf-8")
+        )
+        # Check that we were redirected to the home page anyway
+        assert (
+            '<a href="/raclette/members/add">Add the first participant'
+            in resp.data.decode("utf-8")
+        )
+
+    def test_creation_email_failure_socket(self):
+        self.login("raclette")
+        with patch.object(self.app.mail, "send", MagicMock(side_effect=socket.error)):
+            resp = self.post_project("raclette")
+        # Check that an error message is displayed
+        assert (
+            "We tried to send you an reminder email, but there was an error"
+            in resp.data.decode("utf-8")
+        )
+        # Check that we were redirected to the home page anyway
+        assert (
+            '<a href="/raclette/members/add">Add the first participant'
+            in resp.data.decode("utf-8")
+        )
+
+    def test_password_reset_email_failure(self):
+        self.create_project("raclette")
+        for exception in (smtplib.SMTPException, socket.error):
+            with patch.object(self.app.mail, "send", MagicMock(side_effect=exception)):
+                resp = self.client.post(
+                    "/password-reminder", data={"id": "raclette"}, follow_redirects=True
+                )
+            # Check that an error message is displayed
+            assert "there was an error while sending you an email" in resp.data.decode(
+                "utf-8"
+            )
+            # Check that we were not redirected to the success page
+            assert (
+                "A link to reset your password has been sent to you"
+                not in resp.data.decode("utf-8")
+            )
+
+    def test_invitation_email_failure(self):
+        self.login("raclette")
+        self.post_project("raclette")
+        for exception in (smtplib.SMTPException, socket.error):
+            with patch.object(self.app.mail, "send", MagicMock(side_effect=exception)):
+                resp = self.client.post(
+                    "/raclette/invite",
+                    data={"emails": "toto@notmyidea.org"},
+                    follow_redirects=True,
+                )
+            # Check that an error message is displayed
+            assert (
+                "there was an error while trying to send the invitation emails"
+                in resp.data.decode("utf-8")
+            )
+            # Check that we are still on the same page (no redirection)
+            assert "Invite people to join this project" in resp.data.decode("utf-8")
+
+
+class TestDefaultHashMethod(IhatemoneyTestCase):
+    PASSWORD_HASH_METHOD = None
+    PASSWORD_HASH_SALT_LENGTH = None
+
+    def test_project_creation(self):
+        self.create_project("raclette")
+        resp = self.login("raclette")
+        assert (
+            "<title>I Hate Money — Account manager - raclette</title>"
+            in resp.data.decode("utf-8")
+        )
+
+    def test_project_creation_post(self):
+        self.post_project("raclette")
+        resp = self.login("raclette")
+        assert (
+            "<title>I Hate Money — Account manager - raclette</title>"
+            in resp.data.decode("utf-8")
+        )
+
+
+class TestCaptcha(IhatemoneyTestCase):
+    ENABLE_CAPTCHA = True
+
+    def test_project_creation_with_captcha_case_insensitive(self):
+        # Test that case doesn't matter
+        # Patch the lazy_gettext as it is imported as '_' in forms for captcha value check
+        with patch("ihatemoney.forms._", new=lambda x: "ÉÙÜẞ"), self.client as c:
+            c.post(
+                "/create",
+                data={
+                    "name": "raclette party",
+                    "id": "raclette",
+                    "password": "party",
+                    "contact_email": "raclette@notmyidea.org",
+                    "default_currency": "USD",
+                    "captcha": "éùüß",
+                },
+            )
+            assert len(models.Project.query.all()) == 1
+
+    def test_project_creation_with_captcha(self):
+        with self.client as c:
+            c.post(
+                "/create",
+                data={
+                    "name": "raclette party",
+                    "id": "raclette",
+                    "password": "party",
+                    "contact_email": "raclette@notmyidea.org",
+                    "default_currency": "USD",
+                },
+            )
+            assert len(models.Project.query.all()) == 0
+
+            c.post(
+                "/create",
+                data={
+                    "name": "raclette party",
+                    "id": "raclette",
+                    "password": "party",
+                    "contact_email": "raclette@notmyidea.org",
+                    "default_currency": "USD",
+                    "captcha": "nope",
+                },
+            )
+            assert len(models.Project.query.all()) == 0
+
+            c.post(
+                "/create",
+                data={
+                    "name": "raclette party",
+                    "id": "raclette",
+                    "password": "party",
+                    "contact_email": "raclette@notmyidea.org",
+                    "default_currency": "USD",
+                    "captcha": "euro",
+                },
+            )
+            assert len(models.Project.query.all()) == 1
+
+    def test_api_project_creation_does_not_need_captcha(self):
+        self.client.get("/")
+        resp = self.client.post(
+            "/api/projects",
+            data={
+                "name": "raclette",
+                "id": "raclette",
+                "password": "raclette",
+                "contact_email": "raclette@notmyidea.org",
+            },
+        )
+        assert resp.status_code == 201
+        assert len(models.Project.query.all()) == 1
+
+
+class TestCurrencyConverter:
+    converter = CurrencyConverter()
+    mock_data = {
+        "USD": 1,
+        "EUR": 0.8,
+        "CAD": 1.2,
+        "PLN": 4,
+        CurrencyConverter.no_currency: 1,
+    }
+    converter.get_rates = MagicMock(return_value=mock_data)
+
+    def test_only_one_instance(self):
+        one = id(CurrencyConverter())
+        two = id(CurrencyConverter())
+        assert one == two
+
+    def test_get_currencies(self):
+        currencies = self.converter.get_currencies()
+        for currency in ["USD", "EUR", "CAD", "PLN", CurrencyConverter.no_currency]:
+            assert currency in currencies
+
+    def test_exchange_currency(self):
+        result = self.converter.exchange_currency(100, "USD", "EUR")
+        assert result == 80.0
+
+    def test_failing_remote(self):
+        rates = {}
+        with patch("requests.Response.json", new=lambda _: {}):
+            # we need a non-patched converter, but it seems that MagickMock
+            # is mocking EVERY instance of the class method. Too bad.
+            rates = CurrencyConverter.get_rates(self.converter)
+        assert rates == {CurrencyConverter.no_currency: 1}
+
+
+class TestUtils:
+    def test_eval_arithmetic_expression(self):
+        assert eval_arithmetic_expression("32.3") == 32.3
+        assert eval_arithmetic_expression("-(3+2/4*5-2)") == -3.5
+        with pytest.raises(ValueError):
+            eval_arithmetic_expression("32.3/")
+        with pytest.raises(ValueError):
+            eval_arithmetic_expression("coucouc")
+
+    def test_get_owers_label(self):
+        assert get_owers_label(['A', 'B'], ['A', 'B']) == ('everyone', None)
+        assert get_owers_label(['A', 'B'], ['A', 'B', 'C']) == ('everyone', None)
+        assert get_owers_label(['A', 'B'], ['C']) == ('list', ['C'])
+        assert get_owers_label(['A', 'B', 'C'], ['A', 'B']) == ('list', ['A', 'B'])
+        assert get_owers_label(['A', 'B', 'C', 'D'], ['A', 'B']) == ('list', ['A', 'B'])
+
+
+class TestInactiveMember(IhatemoneyTestCase):
+    def test_inactive_member_class(self):
+        self.post_project("demo")
+
+        self.client.post("/demo/members/add", data={"name": "Alice"})
+        self.client.post("/demo/members/add", data={"name": "Bob"})
+
+        self.client.post(
+            "/demo/add",
+            data={
+                "date": "2026-06-06",
+                "what": "Test bill",
+                "payer": 1,
+                "payed_for": [1, 2],
+                "amount": "10",
+            },
+        )
+
+        # Deactivate Alice
+        self.client.post("/demo/members/1/delete")
+
+        response = self.client.get("/demo/")
+
+        # Alice should still be listed
+        assert b"Alice" in response.data
+        # And styled as inactive
+        assert b"inactive-member" in response.data
+

@@ -1,0 +1,1321 @@
+
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-07-21 23:16+0200\n"
+"PO-Revision-Date: 2023-12-01 14:58+0000\n"
+"Last-Translator: Clonewayx <fillip1@seznam.cz>\n"
+"Language: cs\n"
+"Language-Team: Czech <https://hosted.weblate.org/projects/i-hate-money/i"
+"-hate-money/cs/>\n"
+"Plural-Forms: nplurals=3; plural=(n==1) ? 0 : (n>=2 && n<=4) ? 1 : 2;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.16.0\n"
+
+#, python-format
+msgid "You have just created '%(project)s' to share your expenses"
+msgstr "Právě jste vytvořili '%(project)s' ke sdílení výdajů"
+
+msgid ""
+"Not a valid amount or expression. Only numbers and + - * / operators are "
+"accepted."
+msgstr "Neplatná částka nebo výraz. Pouze čísla a operátory + - * / jsou povolené."
+
+msgid "Project name"
+msgstr "Název projektu"
+
+msgid "Current private code"
+msgstr "Aktuální soukromý kód"
+
+msgid "Enter existing private code to edit project"
+msgstr "Zadejte existující soukromý kód pro úpravu projektu"
+
+msgid "New private code"
+msgstr "Nový soukromý kód"
+
+msgid "Enter a new code if you want to change it"
+msgstr "Pokud chcete provést změnu, vložte nový kód"
+
+msgid "Email"
+msgstr "Email"
+
+msgid "Enable project history"
+msgstr "Povolit historii projektu"
+
+msgid "Default Currency"
+msgstr "Výchozí měna"
+
+msgid "Setting a default currency enables currency conversion between bills"
+msgstr "Nastavení výchozí měny umožňuje konverzi měn mezi účty"
+
+msgid "Unknown error"
+msgstr "Neznámá chyba"
+
+msgid "Invalid private code."
+msgstr "Neplatný soukromý přístupový kód."
+
+msgid ""
+"This project cannot be set to 'no currency' because it contains bills in "
+"multiple currencies."
+msgstr ""
+"Tento projekt nemůže být nastaven na 'bez měny' protože obsahuje účty v "
+"různých měnáh."
+
+#, fuzzy
+msgid "Cannot change project currency because currency conversion is broken"
+msgstr "Nastavení výchozí měny umožňuje konverzi měn mezi účty"
+
+msgid "Compatible with Cospend"
+msgstr "Kompatibilní s Cospend"
+
+msgid "Project identifier"
+msgstr "Identifikátor projektu"
+
+msgid "Private code"
+msgstr "Soukromý kód"
+
+msgid "Create the project"
+msgstr "Vytvořit projekt"
+
+#, python-format
+msgid ""
+"A project with this identifier (\"%(project)s\") already exists. Please "
+"choose a new identifier"
+msgstr ""
+"Projekt s tímto identifikátorem (\"%(project)s\") již existuje. Prosím "
+"zvolte nový identifikátor"
+
+msgid "Which is a real currency: Euro or Petro dollar?"
+msgstr "Jaká je skutečná měna: Euro nebo Petro dolar?"
+
+msgid "euro"
+msgstr "euro"
+
+msgid "Please, validate the captcha to proceed."
+msgstr "Prosím, ověřte captcha k pokračování."
+
+msgid "Enter private code to confirm deletion"
+msgstr "Potvrďte smazání vložením soukromého kódu"
+
+msgid "Get in"
+msgstr "Vstoupit"
+
+msgid "Admin password"
+msgstr "Administrátorské heslo"
+
+msgid "Send me the code by email"
+msgstr "Poslat kód na e-mail"
+
+msgid "This project does not exists"
+msgstr "Tento projekt neexistuje"
+
+msgid "Password mismatch"
+msgstr "Heslo nesouhlasí"
+
+msgid "Password"
+msgstr "Heslo"
+
+msgid "Password confirmation"
+msgstr "Potvrzení hesla"
+
+msgid "Reset password"
+msgstr "Obnova hesla"
+
+msgid "When?"
+msgstr "Kdy?"
+
+msgid "What?"
+msgstr "Co?"
+
+msgid "Who paid?"
+msgstr "Kdo zaplatil?"
+
+msgid "How much?"
+msgstr "Kolik?"
+
+msgid "Currency"
+msgstr "Měna"
+
+msgid "External link"
+msgstr "Externí odkaz"
+
+msgid "A link to an external document, related to this bill"
+msgstr "Externí odkaz k této účtence"
+
+msgid "For whom?"
+msgstr "Od koho?"
+
+#, fuzzy
+msgid "Bill Type"
+msgstr "Položky účtu"
+
+msgid "Submit"
+msgstr "Odeslat"
+
+msgid "Submit and add a new one"
+msgstr "Odeslat a přidat nový"
+
+#, python-format
+msgid "Project default: %(currency)s"
+msgstr "Výchozí měna projektu: %(currency)s"
+
+#, python-format
+msgid "Failed to convert from %(bill_currency)s currency to %(project_currency)s"
+msgstr ""
+
+msgid "Name"
+msgstr "Jméno"
+
+msgid "Weights should be positive"
+msgstr "Váhy musí být kladné"
+
+msgid "Weight"
+msgstr "Váha"
+
+msgid "Add"
+msgstr "Přidat"
+
+msgid "The participant name is invalid"
+msgstr "Název účastníka je neplatný"
+
+msgid "This project already have this participant"
+msgstr "Projekt již obsahuje tohoto člena"
+
+msgid "People to notify"
+msgstr "Osoby k informování"
+
+msgid "Send the invitations"
+msgstr "Odeslat pozvánky"
+
+#, python-format
+msgid "The email %(email)s is not valid"
+msgstr "Toto (%(email)s) není validní e-mail"
+
+msgid "Logout"
+msgstr "Odhlásit se"
+
+msgid "Please check the email configuration of the server."
+msgstr "Prosím zkontrolujte e-mailovou konfiguraci serveru."
+
+#, python-format
+msgid ""
+"Please check the email configuration of the server or contact the "
+"administrator: %(admin_email)s"
+msgstr ""
+"Prosím zkontrolujte e-mailovou konfiguraci serveru nebo se obraťte na "
+"správce: %(admin_email)s"
+
+#. List with two items only
+msgid "{dual_object_0} and {dual_object_1}"
+msgstr "{dual_object_0} a {dual_object_1}"
+
+#. Last two items of a list with more than 3 items
+msgid "{previous_object}, and {end_object}"
+msgstr "{previous_object}, a {end_object}"
+
+#. Two items in a middle of a list with more than 5 objects
+msgid "{previous_object}, {next_object}"
+msgstr "{previous_object}, {next_object}"
+
+#. First two items of a list with more than 3 items
+msgid "{start_object}, {next_object}"
+msgstr "{start_object}, {next_object}"
+
+msgid "No Currency"
+msgstr "Žádná měna"
+
+#. Form error with only one error
+msgid "{prefix}: {error}"
+msgstr "{prefix}: {error}"
+
+#. Form error with a list of errors
+msgid "{prefix}:<br />{errors}"
+msgstr "{prefix}:<br />{errors}"
+
+msgid "Too many failed login attempts."
+msgstr "Příliš mnoho neúspěšných pokusů o přihlášení."
+
+#, python-format
+msgid "This admin password is not the right one. Only %(num)d attempts left."
+msgstr "Toto heslo správce není správné. Zbývá pouze %(num)d pokusů."
+
+msgid "Provided token is invalid"
+msgstr "Poskytnutý token je neplatný"
+
+#, fuzzy, python-format
+msgid "This private code is not the right one. Only %(num)d attempts left."
+msgstr "Toto heslo správce není správné. Zbývá pouze %(num)d pokusů."
+
+msgid "This private code is not the right one"
+msgstr "Tento soukromý kód není správný"
+
+msgid "A reminder email has just been sent to you"
+msgstr "Právě vám byl odeslán upomínkový e-mail"
+
+msgid ""
+"We tried to send you an reminder email, but there was an error. You can "
+"still use the project normally."
+msgstr ""
+"Snažili jsme se vám zaslat upomínkový e-mail, ale došlo k chybě. Projekt "
+"můžete nadále využívat normálně."
+
+msgid ""
+"Sorry, there was an error while sending you an email with password reset "
+"instructions."
+msgstr ""
+"Omlouváme se, během odesílání emailu s instrukcemi pro obnovení hesla se "
+"vyskytla chyba."
+
+msgid "No token provided"
+msgstr "Nebyl poskytnut token"
+
+msgid "Invalid token"
+msgstr "Neplatný token"
+
+msgid "Unknown project"
+msgstr "Neznámý projekt"
+
+msgid "Password successfully reset."
+msgstr "Heslo bylo úspěšné obnoveno."
+
+msgid "Project settings have been changed successfully."
+msgstr "Nastavení projektu byla úspěšně změněna."
+
+msgid "Unable to parse CSV"
+msgstr "Nepodařilo se analyzovat CSV soubor"
+
+#, python-format
+msgid "Missing attribute: %(attribute)s"
+msgstr "Chybějící atributy: %(attribute)s"
+
+msgid ""
+"Cannot add bills in multiple currencies to a project without default "
+"currency"
+msgstr "Nelze přidávat účty v několika měnách do projektu bez výchozí měny"
+
+msgid "Project successfully uploaded"
+msgstr "Projekt byl úspěšně nahrán"
+
+msgid "Project successfully deleted"
+msgstr "Projekt byl úspěšně smazán"
+
+msgid "Error deleting project"
+msgstr "Nastala chyba při mazání projektu"
+
+msgid "Unable to logout"
+msgstr "Nelze se odhlásit"
+
+#, python-format
+msgid "You have been invited to share your expenses for %(project)s"
+msgstr "Byli jste pozváni k sdílení svých výdajů pro %(project)s"
+
+msgid "Your invitations have been sent"
+msgstr "Vaše pozvánka byla odeslána"
+
+msgid "Sorry, there was an error while trying to send the invitation emails."
+msgstr "Omlouváme se, došlo k chybě při pokusu o zaslání pozvánkových e-mailů."
+
+#, python-format
+msgid "%(member)s has been added"
+msgstr "%(member)s bylo přidáno"
+
+msgid "Error activating participant"
+msgstr "Chyba při aktivaci člena"
+
+#, python-format
+msgid "%(name)s is part of this project again"
+msgstr "%(name)s je znova součástí tohoto projektu"
+
+msgid "Error removing participant"
+msgstr "Chyba při odstranění člena"
+
+#, python-format
+msgid ""
+"Participant '%(name)s' has been deactivated. It will still appear in the "
+"list until its balance reach zero."
+msgstr ""
+"Člen '%(name)s byl deaktivován. Stále bude součástí seznamu, dokud jeho "
+"zůstatek nedosáhne nuly."
+
+#, python-format
+msgid "Participant '%(name)s' has been removed"
+msgstr "Člen '%(name)s byl odstraněn"
+
+#, python-format
+msgid "Participant '%(name)s' has been modified"
+msgstr "Člen '%(name)s byl upraven"
+
+msgid "The bill has been added"
+msgstr "Účet byl přidán"
+
+msgid "Error deleting bill"
+msgstr "Chyba při odstranění účtu"
+
+msgid "The bill has been deleted"
+msgstr "Účet byl smazán"
+
+msgid "The bill has been modified"
+msgstr "Účet byl upraven"
+
+#, python-format
+msgid "%(lang)s is not a supported language"
+msgstr "%(lang)s není podporovaný jazyk"
+
+#, fuzzy
+msgid "Error creating settlement bill"
+msgstr "Chyba při odstranění účtu"
+
+#, fuzzy
+msgid "Settlement"
+msgstr "Vyrovnat účty"
+
+#, fuzzy
+msgid "Settlement bill has been successfully added"
+msgstr "Účet byl přidán"
+
+msgid "Error deleting project history"
+msgstr "Chyba při odstraňování historie projektu"
+
+msgid "Deleted project history."
+msgstr "Odstraněna historie projektu."
+
+msgid "Sorry, we were unable to find the page you've asked for."
+msgstr "Omlouváme se, nebyli jsme schopni najít stránku, kterou žádáte."
+
+msgid "The best thing to do is probably to get back to the main page."
+msgstr "Nejlepší je pravděpodobně vrátit se na hlavní stránku."
+
+msgid "Back to the list"
+msgstr "Zpět na seznam"
+
+msgid "Administration tasks are currently disabled."
+msgstr "Správní úkoly jsou momentálně deaktivované."
+
+msgid "Authentication"
+msgstr "Ověření"
+
+msgid "The project you are trying to access do not exist, do you want to"
+msgstr "Projekt, ke kterému se snažíte přistoupit, neexistuje. Chcete"
+
+msgid "create it"
+msgstr "jej vytvořit"
+
+msgid "?"
+msgstr "?"
+
+msgid "Create a new project"
+msgstr "Vytvořit nový projekt"
+
+msgid "Project"
+msgstr "Projekt"
+
+msgid "Number of participants"
+msgstr "Počet členů"
+
+msgid "Number of bills"
+msgstr "Počet účtů"
+
+msgid "Newest bill"
+msgstr "Nejnovější účet"
+
+msgid "Oldest bill"
+msgstr "Nejstarší účet"
+
+msgid "Actions"
+msgstr "Akce"
+
+msgid "edit"
+msgstr "upravit"
+
+msgid "Delete project"
+msgstr "Smazat projekt"
+
+msgid "show"
+msgstr "zobrazit"
+
+msgid "The Dashboard is currently deactivated."
+msgstr "Nástěnka je momentálně deaktivována."
+
+msgid "Download Mobile Application"
+msgstr "Stáhnout mobilní aplikaci"
+
+msgid "Get it on"
+msgstr "Získejte na"
+
+msgid "Edit project"
+msgstr "Upravit projekt"
+
+msgid "Import project"
+msgstr "Nahrát projekt"
+
+msgid "Download project's data"
+msgstr "Stáhnout data projektu"
+
+msgid "Bill items"
+msgstr "Položky účtu"
+
+msgid "Download the list of bills with owner, amount, reason,... "
+msgstr "Stáhnout seznam účtů s majitelem, množstvím, důvodem,... "
+
+msgid "Settle plans"
+msgstr "Uhradit účty"
+
+msgid "Download the list of transactions needed to settle the current bills."
+msgstr "Stáhnout seznam transakcí potřebných k vyrovnání aktuálních účtů."
+
+msgid "Can't remember the password?"
+msgstr "Zapomněli jste heslo?"
+
+msgid "Cancel"
+msgstr "Zrušit"
+
+msgid "Privacy Settings"
+msgstr "Nastavení soukromí"
+
+msgid "Save changes"
+msgstr "Uložit změny"
+
+msgid "This will remove all bills and participants in this project!"
+msgstr "Toto odstraní všechny účty a členy v tomto projektu!"
+
+msgid "Import previously exported project"
+msgstr "Import dříve exportovaného projektu"
+
+msgid "Choose file"
+msgstr "Vyberte soubor"
+
+msgid "Edit this bill"
+msgstr "Upravit tento účet"
+
+msgid "Add a bill"
+msgstr "Přidat účet"
+
+msgid "Simple operations are allowed, e.g. (18+36.2)/3"
+msgstr "Jednoduché operace jsou povoleny, např. (18+36.2)/3"
+
+msgid "Everyone"
+msgstr "Všichni"
+
+msgid "No one"
+msgstr "Nikdo"
+
+msgid "More options"
+msgstr "Více možností"
+
+msgid "Add participant"
+msgstr "Přidat člena"
+
+msgid "Edit this participant"
+msgstr "Upravit tohoto člena"
+
+msgid "Save"
+msgstr ""
+
+msgid "john.doe@example.com, mary.moe@site.com"
+msgstr "john.doe@example.com, mary.moe@site.com"
+
+msgid "Download"
+msgstr "Stáhnout"
+
+msgid "Disabled Project History"
+msgstr "Deaktivovaná historie projektu"
+
+msgid "Enabled Project History"
+msgstr "Povolená historie projektu"
+
+#, fuzzy
+msgid "History Settings Changed (legacy settings)"
+msgstr "Nastavení historie změněna"
+
+#, python-format
+msgid "Bill %(name)s: %(property_name)s changed from %(before)s to %(after)s"
+msgstr "Účet %(name)s: %(property_name)s změněn z %(before)s na %(after)s"
+
+#, python-format
+msgid "Bill %(name)s: %(property_name)s changed to %(after)s"
+msgstr "Účet %(name)s: %(property_name)s změněno na %(after)s"
+
+msgid "Delete Confirmation"
+msgstr "Potvrzení odstranění"
+
+msgid ""
+"Are you sure you want to erase all history for this project? This action "
+"cannot be undone."
+msgstr ""
+"Opravdu si přejete vymazat veškerou historii tohoto projektu? Tato akce "
+"nelze zrušit."
+
+msgid "Confirm deletion"
+msgstr "Potvrdit odstranění"
+
+msgid "Close"
+msgstr "Zavřít"
+
+#, python-format
+msgid "Bill %(name)s: added %(owers_list_str)s to owers list"
+msgstr "Účet %(name)s: přidán %(owers_list_str)s do seznamu dlužníka"
+
+#, python-format
+msgid "Bill %(name)s: removed %(owers_list_str)s from owers list"
+msgstr "Účet %(name)s: odstraněn %(owers_list_str)s ze seznamu dlužníka"
+
+msgid "Details of the bill (before the change)"
+msgstr ""
+
+#, fuzzy
+msgid "Details of the bill"
+msgstr "Upravit tento účet"
+
+#, fuzzy
+msgid "Date:"
+msgstr "Datum"
+
+#, fuzzy
+msgid "Payer:"
+msgstr "Platící"
+
+#, fuzzy
+msgid "Amount:"
+msgstr "Množství"
+
+msgid "Owers:"
+msgstr ""
+
+#, fuzzy
+msgid "External link:"
+msgstr "Externí odkaz"
+
+msgid "This project has history disabled. New actions won't appear below."
+msgstr "Tento projekt má deaktivovanou historii. Nové akce se nezobrazí níže."
+
+msgid "You can enable history on the settings page."
+msgstr "Můžete aktivovat historii v nastavení."
+
+msgid ""
+"The table below reflects actions recorded prior to disabling project "
+"history."
+msgstr ""
+"Níže uvedená tabulka odráží akce zaznamenané před deaktivací historie "
+"projektu."
+
+msgid "You can clear the project history to remove them."
+msgstr "Můžete vymazat historii projektu, abyste je odstranili."
+
+msgid "No history to erase"
+msgstr "Žádná historie ke smazání"
+
+msgid "Clear Project History"
+msgstr "Prázdná historie projektu"
+
+msgid "Time"
+msgstr "Čas"
+
+msgid "Event"
+msgstr "Příležitost"
+
+#, python-format
+msgid "Project %(name)s added"
+msgstr "Projekt %(name)s přidán"
+
+#, python-format
+msgid "Bill %(name)s added"
+msgstr "Účet %(name)s přidán"
+
+#, python-format
+msgid "Participant %(name)s added"
+msgstr "Člen %(name)s přidán"
+
+msgid "Project private code changed"
+msgstr "Soukromý kód projektu změněn"
+
+#, python-format
+msgid "Project renamed to %(new_project_name)s"
+msgstr "Projekt přejmenován na %(new_project_name)s"
+
+#, python-format
+msgid "Project contact email changed to %(new_email)s"
+msgstr "Kontaktní e-mail projektu byl změněn na %(new_email)s"
+
+msgid "Project settings modified"
+msgstr "Nastavení projektu upravena"
+
+#, python-format
+msgid "Bill %(name)s renamed to %(new_description)s"
+msgstr "Účet %(name)s přejmenován na %(new_description)s"
+
+msgid "Payer"
+msgstr "Platící"
+
+msgid "Amount"
+msgstr "Množství"
+
+msgid "Date"
+msgstr "Datum"
+
+#, python-format
+msgid "Amount in %(currency)s"
+msgstr "Množství v %(currency)s"
+
+#, python-format
+msgid "Bill %(name)s modified"
+msgstr "Účet %(name)s upravený"
+
+#, python-format
+msgid "Participant %(name)s deactivated"
+msgstr "Člen %(name)s deaktivován"
+
+#, python-format
+msgid "Participant %(name)s reactivated"
+msgstr "Člen %(name)s reaktivován"
+
+#, python-format
+msgid "Participant %(name)s renamed to %(new_name)s"
+msgstr "Člen %(name)s přejmenován na %(new_name)s"
+
+#, python-format
+msgid "Participant %(name)s: weight changed from %(old_weight)s to %(new_weight)s"
+msgstr "Člen %(name)s: hmotnost změněna z %(old_weight)s na %(new_weight)s"
+
+#, python-format
+msgid "Participant %(name)s modified"
+msgstr "Člen %(name)s upraven"
+
+#, python-format
+msgid "Bill %(name)s removed"
+msgstr "Účet %(name)s odstraněn"
+
+#, python-format
+msgid "Participant %(name)s removed"
+msgstr "Člen %(name)s odstraněn"
+
+#, python-format
+msgid "Project %(name)s changed in an unknown way"
+msgstr "Projekt %(name)s změněn neznámým způsobem"
+
+#, python-format
+msgid "Bill %(name)s changed in an unknown way"
+msgstr "Účet %(name)s změněn neznámým způsobem"
+
+#, python-format
+msgid "Participant %(name)s changed in an unknown way"
+msgstr "Člen %(name)s změněn neznámým způsobem"
+
+msgid "Nothing to list"
+msgstr "Nic k výpisu"
+
+msgid "Someone probably cleared the project history."
+msgstr "Někdo pravděpodobně vyčistil historii projektu."
+
+msgid "Manage your shared <br />expenses, easily"
+msgstr "Spravujte své sdílené <br />výdaje, snadno"
+
+msgid "Try out the demo"
+msgstr "Vyzkoušejte demo"
+
+msgid "You're sharing a house?"
+msgstr "Sdílíte bydlení?"
+
+msgid "Going on holidays with friends?"
+msgstr "Jedete na dovolenou s přáteli?"
+
+msgid "Simply sharing money with others?"
+msgstr "Jenom sdílíte peníze s ostatními?"
+
+msgid "We can help!"
+msgstr "Můžeme vám pomoci!"
+
+msgid "Log in to an existing project"
+msgstr "Přihlaste se k existujícímu projektu"
+
+msgid "Log in"
+msgstr "Přihlásit se"
+
+msgid "can't remember your password?"
+msgstr "Zapomněli jste vaše heslo?"
+
+msgid "Create"
+msgstr "Vytvořit"
+
+msgid ""
+"Don\\'t reuse a personal password. Choose a private code and send it to "
+"your friends"
+msgstr ""
+"Nepoužívejte znovu osobní heslo. Vyberte si soukromý kód a pošlete ho "
+"svým přátelům"
+
+msgid "Account manager"
+msgstr "Správce účtů"
+
+msgid "Bills"
+msgstr "Účty"
+
+msgid "Settle"
+msgstr "Vyrovnat účty"
+
+msgid "Statistics"
+msgstr "Statistiky"
+
+msgid "Languages"
+msgstr "Jazyky"
+
+msgid "Projects"
+msgstr "Projekty"
+
+msgid "Start a new project"
+msgstr "Založit nový projekt"
+
+msgid "History"
+msgstr "Historie"
+
+msgid "Settings"
+msgstr "Nastavení"
+
+msgid "RSS Feed"
+msgstr "RSS kanál"
+
+msgid "Other projects :"
+msgstr "Jiné projekty:"
+
+msgid "switch to"
+msgstr "změnit na"
+
+msgid "Dashboard"
+msgstr "Nástěnka"
+
+#, python-format
+msgid "Please retry after %(date)s."
+msgstr "Prosím po %(date)s opakujte."
+
+msgid "Code"
+msgstr "Kód"
+
+msgid "Mobile Application"
+msgstr "Mobilní aplikace"
+
+msgid "Documentation"
+msgstr "Dokumentace"
+
+msgid "Administration Dashboard"
+msgstr "Správcovský panel"
+
+msgid "Legal information"
+msgstr "Právní informace"
+
+msgid "\"I hate money\" is free software"
+msgstr "\"I hate money\" je otevřený software"
+
+msgid "you can contribute and improve it!"
+msgstr "můžete přispět a zlepšit ho!"
+
+#, python-format
+msgid "%(amount)s each"
+msgstr "%(amount)s každý"
+
+msgid "you sure?"
+msgstr "jste si jisti?"
+
+#, fuzzy
+msgid "Hide filters"
+msgstr "Identifikátor:"
+
+#, fuzzy
+msgid "Show filters"
+msgstr "Vyberte soubor"
+
+msgid "Invite people"
+msgstr "Pozvat lidi"
+
+msgid "Newer bills"
+msgstr "Novější účty"
+
+msgid "Older bills"
+msgstr "Starší účty"
+
+msgid "Toggle filters"
+msgstr ""
+
+msgid "You should start by adding participants"
+msgstr "Měli byste začít přidáním členů"
+
+msgid "Add a new bill"
+msgstr "Přidat nový účet"
+
+msgid "Search"
+msgstr ""
+
+#, fuzzy
+msgid "Search in For what?"
+msgstr "Za co?"
+
+#, fuzzy
+msgid "Any payer"
+msgstr "Platící"
+
+msgid "Start date"
+msgstr ""
+
+#, fuzzy
+msgid "End date"
+msgstr "Datum"
+
+#, fuzzy
+msgid "Amount min"
+msgstr "Množství"
+
+msgid "Min cost"
+msgstr ""
+
+#, fuzzy
+msgid "Amount max"
+msgstr "Množství"
+
+msgid "Max cost"
+msgstr ""
+
+msgid "Filter"
+msgstr ""
+
+msgid "Clear filters"
+msgstr ""
+
+msgid "For what?"
+msgstr "Za co?"
+
+#, python-format
+msgid "Added on %(date)s"
+msgstr "Přidáno %(date)s"
+
+#, python-format
+msgid "Everyone but %(excluded)s"
+msgstr "Všichni kromě %(excluded)s"
+
+msgid "delete"
+msgstr "smazat"
+
+msgid "No bills"
+msgstr "Žádné účty"
+
+msgid "Nothing to list yet."
+msgstr "Zatím nic k výpisu."
+
+msgid "Add your first bill"
+msgstr "Přidat svůj první účet"
+
+msgid "Add the first participant"
+msgstr "Přidat prvního člena"
+
+msgid "Password reminder"
+msgstr "Připomenutí hesla"
+
+msgid ""
+"A link to reset your password has been sent to you, please check your "
+"emails."
+msgstr "Odkaz na obnovení hesla vám byl odeslán, zkontrolujte své e-maily."
+
+msgid "Return to home page"
+msgstr "Zpět na domovskou stránku"
+
+msgid "Your projects"
+msgstr "Vaše projekty"
+
+msgid "Reset your password"
+msgstr "Obnovit heslo"
+
+msgid "Invite people to join this project"
+msgstr "Pozvat lidi k tomuto projektu"
+
+msgid "Share an invitation link"
+msgstr "Sdílet odkaz na pozvánku"
+
+msgid ""
+"The easiest way to invite people is to give them the following invitation"
+" link.<br />They will be able to access the project, manage participants,"
+" add/edit/delete bills. However, they will not have access to important "
+"settings such as changing the private code or deleting the whole project."
+msgstr ""
+"Nejjednodušší způsob, jak pozvat lidi do projektu, je sdílet jim "
+"následující odkaz na pozvánku. <br />Budou mít přístup k projektu, budou "
+"moci spravovat účastníky, přidávat/upravovat/odstraňovat účty. Nicméně, "
+"nebudou mít přístup k důležitým nastavením, jako je změna soukromého kódu"
+" nebo odstranění celého projektu."
+
+msgid "Scan QR code"
+msgstr "Skenovat QR kód"
+
+msgid "Use a mobile device with a compatible app."
+msgstr "Používejte mobilní zařízení s kompatibilní aplikací."
+
+msgid "Send via Emails"
+msgstr "Odeslat e-mailem"
+
+msgid ""
+"Specify a list of email adresses (separated by comma) of people you want "
+"to notify about the creation of this project. We will send them an email "
+"with the invitation link."
+msgstr ""
+"Specifikujte seznam e-mailových adres (oddělených čárkou) osob, které "
+"chcete informovat o vytvoření tohoto projektu. Pošleme jim e-mail s "
+"pozvánkou."
+
+msgid "Share Identifier & code"
+msgstr "Sdílet identifikátor a kód"
+
+msgid ""
+"You can share the project identifier and the private code by any "
+"communication means.<br />Anyone with the private code will have access "
+"to the full project, including changing settings such as the private code"
+" or project email address, or even deleting the whole project."
+msgstr ""
+"Můžete sdílet identifikátor projektu a soukromý kód prostřednictvím "
+"libovolného komunikačního prostředku.<br />Každý, kdo má soukromý kód, "
+"bude mít přístup k celému projektu, včetně možnosti měnit jeho nastavení "
+"jako je soukromý kód, e-mailová adresa nebo dokonce odstranění celého "
+"projektu."
+
+msgid "Identifier:"
+msgstr "Identifikátor:"
+
+msgid "Private code:"
+msgstr "Soukromý kód:"
+
+msgid "the private code was defined when you created the project"
+msgstr "soukromý kód byl definován, když jste vytvořili projekt"
+
+msgid "Who pays?"
+msgstr "Kdo zaplatil?"
+
+msgid "To whom?"
+msgstr "Komu?"
+
+#, fuzzy
+msgid "Settled?"
+msgstr "Vyrovnat účty"
+
+msgid "Click here to record that the money transfer has been done"
+msgstr ""
+
+#, fuzzy
+msgid "Register settlement"
+msgstr "Vyrovnat účty"
+
+msgid "Who?"
+msgstr "Kdo?"
+
+msgid "Balance"
+msgstr "Zůstatek"
+
+msgid "deactivate"
+msgstr "deaktivovat"
+
+msgid "reactivate"
+msgstr "reaktivovat"
+
+msgid "Paid"
+msgstr "Zaplaceno"
+
+#, fuzzy
+msgid "Expenses"
+msgstr "Náklady podle měsíce"
+
+msgid "Direct transfer"
+msgstr ""
+
+#, fuzzy
+msgid "Received"
+msgstr "reaktivovat"
+
+#, fuzzy
+msgid "Expenses by month"
+msgstr "Náklady podle měsíce"
+
+msgid "Period"
+msgstr "Období"
+
+#~ msgid "%(msg_compl)sThe project identifier is %(project)s"
+#~ msgstr ""
+
+#~ msgid "each"
+#~ msgstr ""
+
+#~ msgid "Error while sending reminder email"
+#~ msgstr ""
+
+#~ msgid ""
+#~ "This access code will be sent to"
+#~ " your friends. It is stored as-"
+#~ "is by the server, so don\\'t reuse"
+#~ " a personal password!"
+#~ msgstr ""
+
+#~ msgid "Participant"
+#~ msgstr "Účastník"
+
+#~ msgid "Bill"
+#~ msgstr "Účet"
+
+#~ msgid "Select all"
+#~ msgstr ""
+
+#~ msgid "Select none"
+#~ msgstr ""
+
+#~ msgid "changed"
+#~ msgstr ""
+
+#~ msgid "from"
+#~ msgstr ""
+
+#~ msgid "to"
+#~ msgstr ""
+
+#~ msgid "Confirm Delete"
+#~ msgstr ""
+
+#~ msgid "Added"
+#~ msgstr ""
+
+#~ msgid "Removed"
+#~ msgstr ""
+
+#~ msgid "and"
+#~ msgstr ""
+
+#~ msgid "owers list"
+#~ msgstr ""
+
+#~ msgid "added"
+#~ msgstr ""
+
+#~ msgid "Project renamed to"
+#~ msgstr ""
+
+#~ msgid "Project contact email changed to"
+#~ msgstr ""
+
+#~ msgid "deactivated"
+#~ msgstr ""
+
+#~ msgid "reactivated"
+#~ msgstr ""
+
+#~ msgid "renamed to"
+#~ msgstr ""
+
+#~ msgid "External link changed to"
+#~ msgstr ""
+
+#~ msgid "modified"
+#~ msgstr ""
+
+#~ msgid "removed"
+#~ msgstr ""
+
+#~ msgid "changed in a unknown way"
+#~ msgstr ""
+
+#~ msgid "You either provided a bad token or no project identifier."
+#~ msgstr ""
+
+#~ msgid "User name incorrect"
+#~ msgstr "Nesprávné uživatelské jméno"
+
+#~ msgid "People to notify"
+#~ msgstr "Osoby k informování"
+
+#~ msgid "Error activating member"
+#~ msgstr ""
+
+#~ msgid "Error removing member"
+#~ msgstr ""
+
+#~ msgid ""
+#~ "User '%(name)s' has been deactivated. It"
+#~ " will still appear in the users "
+#~ "list until its balance becomes zero."
+#~ msgstr ""
+
+#~ msgid "User '%(name)s' has been removed"
+#~ msgstr ""
+
+#~ msgid "User '%(name)s' has been edited"
+#~ msgstr ""
+
+#~ msgid "Number of members"
+#~ msgstr ""
+
+#~ msgid "Edit this member"
+#~ msgstr ""
+
+#~ msgid "Participants to notify"
+#~ msgstr ""
+
+#~ msgid "Import"
+#~ msgstr "Import"
+
+#~ msgid "Amount paid"
+#~ msgstr "Zaplacená částka"
+
+#~ msgid "Bills can't be null"
+#~ msgstr "Účtenka nemůže být nulová"
+
+#~ msgid "The project identifier is %(project)s"
+#~ msgstr ""
+
+#~ msgid "Invalid JSON"
+#~ msgstr "Neplatný JSON"
+
+#~ msgid ""
+#~ "Sorry, there was an error while "
+#~ "trying to send the invitation emails."
+#~ " Please check the email configuration "
+#~ "of the server or contact the "
+#~ "administrator."
+#~ msgstr ""
+
+#~ msgid "Are you sure?"
+#~ msgstr ""
+
+#~ msgid "Import JSON"
+#~ msgstr ""
+
+#~ msgid ""
+#~ "\n"
+#~ "            <i>This project has history "
+#~ "disabled. New actions won't appear "
+#~ "below. You can enable history on "
+#~ "the</i>\n"
+#~ "            <a href=\"%(url)s\">settings page</a>\n"
+#~ "            "
+#~ msgstr ""
+
+#~ msgid ""
+#~ "\n"
+#~ "            <i>The table below reflects "
+#~ "actions recorded prior to disabling "
+#~ "project history. You can\n"
+#~ "            <a href=\"#\" data-"
+#~ "toggle=\"modal\" data-keyboard=\"false\" data-"
+#~ "target=\"#confirm-erase\">clear project history</a>"
+#~ " to remove them.</i></p>\n"
+#~ "            "
+#~ msgstr ""
+
+#~ msgid "Send invites"
+#~ msgstr "Poslat pozvánky"
+
+#~ msgid " show"
+#~ msgstr ""
+
+#~ msgid "Edit the project"
+#~ msgstr ""
+
+#~ msgid "You probably want to"
+#~ msgstr ""
+
+#~ msgid "add a bill"
+#~ msgstr ""
+
+#~ msgid "add participants"
+#~ msgstr ""
+
+#~ msgid ""
+#~ "You can share the project identifier "
+#~ "and the private code by any "
+#~ "communication means."
+#~ msgstr ""
+
+#~ msgid "Share the Link"
+#~ msgstr ""
+
+#~ msgid "You can directly share the following link via your prefered medium"
+#~ msgstr ""
+
+#~ msgid ""
+#~ "Specify a (comma separated) list of "
+#~ "email adresses you want to notify "
+#~ "about the\n"
+#~ "                creation of this budget "
+#~ "management project and we will send "
+#~ "them an email for you."
+#~ msgstr ""
+
+#~ msgid ""
+#~ "Specify a (comma separated) list of "
+#~ "email adresses you want to notify "
+#~ "about the\n"
+#~ "                creation of this budget "
+#~ "management project and we will send "
+#~ "them an email with the invitation "
+#~ "link."
+#~ msgstr ""
+
+#~ msgid "Spent"
+#~ msgstr "Utraceno"
+
+#~ msgid "Use IP tracking for project history"
+#~ msgstr "Použít sledování IP pro historii projektu"
+
+#~ msgid "Error deleting recorded IP addresses"
+#~ msgstr "Chyba při odstraňování zaznamenaných IP adres"
+
+#~ msgid "Deleted recorded IP addresses in project history."
+#~ msgstr "Smazané zaznamenané IP adresy v historii projektu."
+
+#~ msgid "Disabled Project History & IP Address Recording"
+#~ msgstr "Deaktivovaná historie projektu & nahrávání IP adresy"
+
+#~ msgid "Disabled IP Address Recording"
+#~ msgstr "Deaktivované nahrávání IP adresy"
+
+#~ msgid "Enabled Project History & IP Address Recording"
+#~ msgstr "Aktivovaná historie projektu & nahrávání IP adresy"
+
+#~ msgid "Enabled IP Address Recording"
+#~ msgstr "Aktivované nahrávání IP adresy"
+
+#~ msgid "Confirm Remove IP Adresses"
+#~ msgstr "Potvrdit odstranění IP adresy"
+
+#~ msgid ""
+#~ "Are you sure you want to delete"
+#~ " all recorded IP addresses from this"
+#~ " project?\n"
+#~ "                The rest of the project"
+#~ " history will be unaffected. This "
+#~ "action cannot be undone."
+#~ msgstr ""
+#~ "Opravdu si přejete-li odstranit všechny"
+#~ " zaznamenané IP adresy z tohoto "
+#~ "projektu?\n"
+#~ "Zbytek historie projektu bude nedotčen. Tato akce nelze zrušit."
+
+#~ msgid ""
+#~ "Some entries below contain IP addresses,"
+#~ " even though this project has IP "
+#~ "recording disabled. "
+#~ msgstr ""
+#~ "Některé položky níže obsahují IP adresy,"
+#~ " přestože tento projekt má deaktivované "
+#~ "IP nahrávání. "
+
+#~ msgid "Delete stored IP addresses"
+#~ msgstr "Smazat uložené IP adresy"
+
+#~ msgid "No IP Addresses to erase"
+#~ msgstr "Žádné IP adresy ke smazání"
+
+#~ msgid "Delete Stored IP Addresses"
+#~ msgstr "Smazat uložené IP adresy"
+
+#~ msgid "IP address recording can be enabled on the settings page"
+#~ msgstr "Nahrávání IP adresy lze aktivovat v nastavení"
+
+#~ msgid "IP address recording can be disabled on the settings page"
+#~ msgstr "Nahrávání IP adresy lze deaktivovat v nastavení"
+
+#~ msgid "From IP"
+#~ msgstr "Z IP adresy"
+
