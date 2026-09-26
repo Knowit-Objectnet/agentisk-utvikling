@@ -15,13 +15,16 @@ tool while you do it.
 
 | # | Step | Claude Code | opencode | Codex |
 |---|---|---|---|---|
-| 1 | propose | `/opsx:propose` | `/opsx-propose` | `$openspec-propose` |
-| 2 | apply | `/opsx:apply` | `/opsx-apply` | `$openspec-apply-change` |
-| 3 | archive | `/opsx:archive` | `/opsx-archive` | `$openspec-archive-change` |
+| 1 | explore | `/opsx:explore` | `/opsx-explore` | `$openspec-explore` |
+| 2 | propose | `/opsx:propose` | `/opsx-propose` | `$openspec-propose` |
+| 3 | apply | `/opsx:apply` | `/opsx-apply` | `$openspec-apply-change` |
+| 4 | archive | `/opsx:archive` | `/opsx-archive` | `$openspec-archive-change` |
 
 ### Running the steps
 
 - Do only the step the user ran, then stop so they can review it.
+- **explore:** the user makes the decisions here. Raise the open questions that matter most for
+  this feature and let them choose; don't decide for them.
 - **propose: one slice per change.** If the request needs more than about 5 requirements or 3
   task groups, propose only the first useful vertical slice (about 2 hours of apply) as this
   change and list the rest in `proposal.md` under "Follow-up changes". The user runs the whole
@@ -41,7 +44,8 @@ tool while you do it.
   After a partial apply, name both options: `Next: /opsx:apply (group 2) or /opsx:archive once all
   tasks are done`.
 - If the user types `next` or asks what to do now, check `openspec/changes/` to see where they
-  are and answer the same way. Do not run the step for them.
+  are and answer the same way (no change yet: `/opsx:explore`, or `/opsx:propose` once the
+  decisions are made). Do not run the step for them.
 - After archive, point them to the first "Follow-up change" in `proposal.md`, or to "Finished
   early?" in `README.md` if there is none.
 
@@ -68,6 +72,10 @@ What to teach:
   is written. Archiving a change merges it into the specs, so the specs grow with the code.
   `openspec/config.yaml` feeds project context and rules into every step; `openspec/constitution.md`
   holds the rules nobody may break.
+- **explore** is OpenSpec's thinking mode ("think through ideas, investigate problems, clarify
+  requirements"). It reads the code and writes nothing unless asked. Here it is where the user
+  makes the big decisions. Try: pick your own answer at least once, then look for it in
+  `design.md` after propose.
 - **propose** writes four artifacts: `proposal.md` (why, what changes, non-goals),
   `specs/<capability>/spec.md` (a *delta*: ADDED / MODIFIED / REMOVED requirements, each with
   WHEN/THEN scenarios), `design.md` (decisions and the alternatives rejected) and `tasks.md`
@@ -80,8 +88,6 @@ What to teach:
 - **archive** validates, merges the delta into `openspec/specs/<capability>/spec.md` and moves the
   change to `openspec/changes/archive/`. Review: read the merged spec; this is what the next
   change builds on. Try: `openspec list --specs`, `openspec view`.
-- **Optional:** `/opsx:explore` (Codex: `$openspec-explore`) is a thinking partner before
-  proposing. Nothing gets written.
 
 ## Commands
 

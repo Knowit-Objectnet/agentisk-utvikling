@@ -49,13 +49,22 @@ git checkout -b my-recurring-bills
 Open your harness in this folder (`claude`, `opencode` or `codex`) and type:
 
 ```text
-/opsx:propose Add recurring bills. When adding a bill, a member can make it repeat every week, month or year from the bill's date, optionally until an end date. Every occurrence that has come due is added as a normal bill with the same payer, people, amount and currency, even if nobody opened the project for months. A monthly bill on the 31st falls on the last day of shorter months. An occurrence is never added twice, not even when two members open the project at the same moment, and one that was deleted by hand never comes back. A new page lists the project's recurring bills with their next date. From there a member can edit one (future occurrences only), pause, resume or stop it, and skip the next occurrence. Bills added this way link back to their recurring bill, changes to recurring bills show in the project history, and the API lets the mobile app manage them. Existing bills, exports and the API must keep working.
+/opsx:explore Add recurring bills. When adding a bill, a member can make it repeat every week, month or year from the bill's date, optionally until an end date. Every occurrence that has come due is added as a normal bill with the same payer, people, amount and currency, even if nobody opened the project for months. A monthly bill on the 31st falls on the last day of shorter months. An occurrence is never added twice, not even when two members open the project at the same moment, and one that was deleted by hand never comes back. A new page lists the project's recurring bills with their next date. From there a member can edit one (future occurrences only), pause, resume or stop it, and skip the next occurrence. Bills added this way link back to their recurring bill, changes to recurring bills show in the project history, and the API lets the mobile app manage them. Existing bills, exports and the API must keep working.
 ```
 
-In opencode start with `/opsx-propose`, in Codex with `$openspec-propose`.
+In opencode start with `/opsx-explore`, in Codex with `$openspec-explore`.
+
+Explore is OpenSpec's thinking mode: the agent reads the code and talks through the decisions
+this feature needs, and you choose. When you're done, stay in the same session and type:
+
+```text
+/opsx:propose add-recurring-bills
+```
+
+In opencode that's `/opsx-propose`, in Codex `$openspec-propose`.
 
 The agent may ask you one question first, usually which slice to build. Answering it is part of
-propose. Aim for about 45 minutes on propose and your review, then apply group by group.
+propose. Aim for about an hour on explore, propose and your review, then apply group by group.
 
 Read what the agent writes before you move on. After each step it tells you the next command.
 Lost? Type `next`. Want to know why? Type `explain`. You won't finish the whole feature, and that's
@@ -65,9 +74,10 @@ fine: the point is to see what each step does. The agent explains each step as y
 
 | # | Step | What happens | Claude Code | opencode | Codex |
 |---|---|---|---|---|---|
-| 1 | propose | Agent writes proposal, specs, design and tasks in `openspec/changes/`. You review and edit them. | `/opsx:propose` | `/opsx-propose` | `$openspec-propose` |
-| 2 | apply | Agent works through one task group at a time: migration, code, tests. Run it again for the next group. | `/opsx:apply` | `/opsx-apply` | `$openspec-apply-change` |
-| 3 | archive | Once all tasks are done: agent validates the change and merges its specs into `openspec/specs/`. Out of time? Leave the change unarchived. | `/opsx:archive` | `/opsx-archive` | `$openspec-archive-change` |
+| 1 | explore | Your turn to decide: think the feature through with the agent before any change is written. | `/opsx:explore` | `/opsx-explore` | `$openspec-explore` |
+| 2 | propose | Agent writes proposal, specs, design and tasks in `openspec/changes/`, using your decisions. You review and edit them. | `/opsx:propose` | `/opsx-propose` | `$openspec-propose` |
+| 3 | apply | Agent works through one task group at a time: migration, code, tests. Run it again for the next group. | `/opsx:apply` | `/opsx-apply` | `$openspec-apply-change` |
+| 4 | archive | Once all tasks are done: agent validates the change and merges its specs into `openspec/specs/`. Out of time? Leave the change unarchived. | `/opsx:archive` | `/opsx-archive` | `$openspec-archive-change` |
 
 ## Finished early?
 
