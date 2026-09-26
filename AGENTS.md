@@ -20,22 +20,36 @@ tool while you do it.
 ### Running the steps
 
 - Do only the step the user ran, then stop so they can review it.
+- **propose: one slice per change.** If the request needs more than about 10 requirements, propose
+  only the first useful vertical slice as this change and list the rest in `proposal.md` under
+  "Follow-up changes". The user runs the whole flow again for each follow-up.
+- **apply: one task group per run.** Finish and test one group, tick its boxes, then stop and
+  report how many tasks are left. The user runs apply again for the next group.
+- **archive only a finished change.** Archive merges the delta into `openspec/specs/`, which means
+  "this is how the system behaves now". If tasks are still open, say so plainly, recommend NOT
+  archiving (leave the change active and come back to it), and never pick "sync" for them.
 - Before archive, `openspec validate <change> --strict` must pass.
 - The `openspec` CLI prints its own `Next: openspec ...` hints. Those are for you; the user only
   ever gets the slash command.
 - End every step with one line naming the next step, in the syntax of the harness you are
   running in, plus what to review first. Example: `Next: /opsx:apply (review tasks.md first)`.
+  After a partial apply, name both options: `Next: /opsx:apply (group 2) or /opsx:archive once all
+  tasks are done`.
 - If the user types `next` or asks what to do now, check `openspec/changes/` to see where they
   are and answer the same way. Do not run the step for them.
-- After archive, point them to "Finished early?" in `README.md`.
+- After archive, point them to the first "Follow-up change" in `proposal.md`, or to "Finished
+  early?" in `README.md` if there is none.
 
 ### Teaching
 
-- **First step of the session:** open with at most 4 lines on what OpenSpec is (below), then do
-  the work.
+- **First step of the session:** open with at most 4 lines on what OpenSpec is (below) and on
+  how the session works (you stop after each step; their job is to read and edit what you wrote),
+  then do the work.
 - **After every step:** before the `Next:` line, add a short block headed `What just happened`
-  (at most 6 lines): what this step is for, which files it wrote and what each holds, what the
-  user should check when reviewing, and one thing to try (a CLI command or an edit).
+  (at most 7 lines): what this step is for, which files it wrote and what each holds, the most
+  interesting thing the step found (a constitution conflict, a missing feature, an edge case),
+  what the user should check, and one thing to try. After propose, the thing to try is an edit:
+  name one decision in their artifacts they could flip.
 - **`explain`:** if the user types `explain` (or asks why/how), explain the current step in more
   depth using their own artifacts as the examples. Quote a requirement, a scenario, a task.
 - **Changes of mind:** if the user wants something different, show the OpenSpec way: edit the
@@ -61,7 +75,7 @@ What to teach:
 - **archive** validates, merges the delta into `openspec/specs/<capability>/spec.md` and moves the
   change to `openspec/changes/archive/`. Review: read the merged spec; this is what the next
   change builds on. Try: `openspec list --specs`, `openspec view`.
-- **Optional:** `/opsx:explore` (opencode `/opsx-explore`, Codex `$openspec-explore`) is a thinking partner before
+- **Optional:** `/opsx:explore` (Codex: `$openspec-explore`) is a thinking partner before
   proposing. Nothing gets written.
 
 ## Commands
@@ -97,6 +111,13 @@ What to teach:
   `src/main/resources/db/{h2,mysql,postgres}/`. A column change touches all three `schema.sql`
   files. The H2 and MySQL `data.sql` inserts are positional (no column list), so adding a column
   to `visits`, `pets` etc. breaks startup and every JPA test until those inserts are updated.
+
+- **Format before every test run**, including the first "see it fail" run: an unformatted test
+  file fails `validate` before anything compiles. `./mvnw spring-javaformat:apply && ./mvnw test`.
+- **`th:errors` elements need a message key too** (`th:text="#{error}"`), or the i18n test flags
+  their placeholder text.
+- **`@WebMvcTest` only loads controllers.** A `Formatter` or other `@Component` the controller needs
+  must be added with `includeFilters` (see `PetControllerTests` and `PetTypeFormatter`).
 
 ## Layout
 

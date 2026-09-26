@@ -48,7 +48,7 @@ Every user-visible behaviour MUST be pinned by a test.
 
 ### IV. Every Database, Every Language
 
-PetClinic ships three databases and eleven languages; a feature is not done until all of them work.
+PetClinic ships three databases and ten languages; a feature is not done until all of them work.
 
 - Schema changes MUST be applied to all three `src/main/resources/db/{h2,mysql,postgres}/schema.sql`
   files, and to the matching `data.sql` when seed rows need the new column.

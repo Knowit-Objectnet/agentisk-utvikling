@@ -29,6 +29,7 @@ context: |
 
 rules:
   proposal:
+    - "If the request needs more than about 10 requirements, scope this change to the first useful vertical slice and list the rest under a 'Follow-up changes' heading"
     - Include a "Non-goals" section to keep scope tight
     - State which screens change and which database tables change
   design:
