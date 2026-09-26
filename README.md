@@ -1,6 +1,8 @@
 # Agentic workshop
 
-Add a feature to an existing codebase using a spec-driven harness.
+Try a spec-driven workflow (Spec Kit or OpenSpec) inside your coding agent, on a big feature in a
+real codebase. You won't finish the feature. The point is to see what each step does, and the
+agent explains each step as you go.
 
 ## Start
 
@@ -14,15 +16,17 @@ Then follow `README.md` on that branch.
 
 ## Branches
 
-| | Spec Kit | OpenSpec |
-|---|---|---|
-| fakeredis (Python) | `fakeredis/speckit` | `fakeredis/openspec` |
-| Spring PetClinic (Java) | `petclinic/speckit` | `petclinic/openspec` |
+| | Spec Kit | OpenSpec | The feature |
+|---|---|---|---|
+| Spring PetClinic (Java) | `petclinic/speckit` | `petclinic/openspec` | Vet appointments with schedules |
+| fakeredis (Python) | `fakeredis/speckit` | `fakeredis/openspec` | Time control, so tests never sleep |
 
 ## Needs
 
 - An agent: Claude Code, opencode or Codex
-- fakeredis: uv, Docker
 - PetClinic: Java 17+
-- Spec Kit: bash (WSL/Git Bash on Windows)
+- fakeredis: [uv](https://docs.astral.sh/uv/)
+- Spec Kit: bash (WSL or Git Bash on Windows)
 - OpenSpec: Node 20+ and `npm i -g @fission-ai/openspec@1.13.2`
+
+No Docker and no database server. Tests run locally in seconds.
