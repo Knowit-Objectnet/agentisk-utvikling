@@ -43,10 +43,19 @@ git checkout -b my-appointments
 Open your harness in this folder (`claude`, `opencode` or `codex`) and type:
 
 ```text
-/opsx:propose Turn visits into appointments with vets. Each vet has a weekly working schedule (default Monday to Friday, 08:00 to 16:00) that the clinic can edit. A visit is booked with a vet at a start time and lasts 30 minutes, or 60 for surgery. A vet can never be double-booked, not even when two receptionists book at the same moment, appointments can't be in the past, and surgery can only be booked with a vet who has the surgery specialty. The booking form only offers the chosen vet's free times, the owner page shows each visit's vet and time, and each vet gets a day and a week schedule page. Receptionists can cancel or move an upcoming appointment. Existing visits must keep working.
+/opsx:explore Turn visits into appointments with vets. Each vet has a weekly working schedule (default Monday to Friday, 08:00 to 16:00) that the clinic can edit. A visit is booked with a vet at a start time and lasts 30 minutes, or 60 for surgery. A vet can never be double-booked, not even when two receptionists book at the same moment, appointments can't be in the past, and surgery can only be booked with a vet who has the surgery specialty. The booking form only offers the chosen vet's free times, the owner page shows each visit's vet and time, and each vet gets a day and a week schedule page. Receptionists can cancel or move an upcoming appointment. Existing visits must keep working.
 ```
 
-In opencode start with `/opsx-propose`, in Codex with `$openspec-propose`.
+In opencode start with `/opsx-explore`, in Codex with `$openspec-explore`.
+
+Explore is OpenSpec's thinking mode: the agent reads the code and talks through the decisions
+this feature needs, and you choose. When you're done, stay in the same session and type:
+
+```text
+/opsx:propose add-vet-appointments
+```
+
+In opencode that's `/opsx-propose`, in Codex `$openspec-propose`.
 
 Read what the agent writes before you move on. After each step it tells you the next command.
 Lost? Type `next`. Want to know why? Type `explain`. You won't finish the whole feature, and that's
@@ -56,9 +65,10 @@ fine: the point is to see what each step does. The agent explains each step as y
 
 | # | Step | What happens | Claude Code | opencode | Codex |
 |---|---|---|---|---|---|
-| 1 | propose | Agent writes proposal, specs, design and tasks in `openspec/changes/`. You review and edit them. | `/opsx:propose` | `/opsx-propose` | `$openspec-propose` |
-| 2 | apply | Agent works through one task group at a time: code, tests, translations. Run it again for the next group. | `/opsx:apply` | `/opsx-apply` | `$openspec-apply-change` |
-| 3 | archive | Once all tasks are done: agent validates the change and merges its specs into `openspec/specs/`. Out of time? Leave the change unarchived. | `/opsx:archive` | `/opsx-archive` | `$openspec-archive-change` |
+| 1 | explore | Your turn to decide: think the feature through with the agent before any change is written. | `/opsx:explore` | `/opsx-explore` | `$openspec-explore` |
+| 2 | propose | Agent writes proposal, specs, design and tasks in `openspec/changes/`, using your decisions. You review and edit them. | `/opsx:propose` | `/opsx-propose` | `$openspec-propose` |
+| 3 | apply | Agent works through one task group at a time: code, tests, translations. Run it again for the next group. | `/opsx:apply` | `/opsx-apply` | `$openspec-apply-change` |
+| 4 | archive | Once all tasks are done: agent validates the change and merges its specs into `openspec/specs/`. Out of time? Leave the change unarchived. | `/opsx:archive` | `/opsx-archive` | `$openspec-archive-change` |
 
 ## Finished early?
 
