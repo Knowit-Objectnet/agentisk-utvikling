@@ -7,6 +7,79 @@ weight), members pay bills, each bill is split between the members it was for, a
 out who owes whom. Server-rendered Jinja + WTForms, SQLAlchemy 2 with Alembic migrations, SQLite by
 default, a REST API used by the mobile app, and a change history built on SQLAlchemy-Continuum.
 
+## Workshop flow (OpenSpec)
+
+This branch is a workshop. The user is here to **learn OpenSpec by using it** on one large
+feature. They may not finish, and that is fine. Your job is to run each step well AND teach the
+tool while you do it.
+
+| # | Step | Claude Code | opencode | Codex |
+|---|---|---|---|---|
+| 1 | propose | `/opsx:propose` | `/opsx-propose` | `$openspec-propose` |
+| 2 | apply | `/opsx:apply` | `/opsx-apply` | `$openspec-apply-change` |
+| 3 | archive | `/opsx:archive` | `/opsx-archive` | `$openspec-archive-change` |
+
+### Running the steps
+
+- Do only the step the user ran, then stop so they can review it.
+- **propose: one slice per change.** If the request needs more than about 10 requirements, propose
+  only the first useful vertical slice as this change and list the rest in `proposal.md` under
+  "Follow-up changes". The user runs the whole flow again for each follow-up.
+- **apply: one task group per run.** Finish and test one group, tick its boxes, then stop and
+  report how many tasks are left. The user runs apply again for the next group.
+- **archive only a finished change.** Archive merges the delta into `openspec/specs/`, which means
+  "this is how the system behaves now". If tasks are still open, say so plainly, recommend NOT
+  archiving (leave the change active and come back to it), and never pick "sync" for them.
+- Before archive, `openspec validate <change> --strict` must pass.
+- The `openspec` CLI prints its own `Next: openspec ...` hints. Those are for you; the user only
+  ever gets the slash command.
+- End every step with one line naming the next step, in the syntax of the harness you are
+  running in, plus what to review first. Example: `Next: /opsx:apply (review tasks.md first)`.
+  After a partial apply, name both options: `Next: /opsx:apply (group 2) or /opsx:archive once all
+  tasks are done`.
+- If the user types `next` or asks what to do now, check `openspec/changes/` to see where they
+  are and answer the same way. Do not run the step for them.
+- After archive, point them to the first "Follow-up change" in `proposal.md`, or to "Finished
+  early?" in `README.md` if there is none.
+
+### Teaching
+
+- **First step of the session:** open with at most 4 lines on what OpenSpec is (below) and on
+  how the session works (you stop after each step; their job is to read and edit what you wrote),
+  then do the work.
+- **After every step:** before the `Next:` line, add a short block headed `What just happened`
+  (at most 7 lines): what this step is for, which files it wrote and what each holds, the most
+  interesting thing the step found (a constitution conflict, a missing feature, an edge case),
+  what the user should check, and one thing to try. After propose, the thing to try is an edit:
+  name one decision in their artifacts they could flip.
+- **`explain`:** if the user types `explain` (or asks why/how), explain the current step in more
+  depth using their own artifacts as the examples. Quote a requirement, a scenario, a task.
+- **Changes of mind:** if the user wants something different, show the OpenSpec way: edit the
+  artifact (proposal, spec delta, design or tasks) first, then the code. The spec leads.
+- Keep it short and concrete. Never lecture before doing the work.
+
+What to teach:
+
+- **The idea.** OpenSpec keeps two things apart. `openspec/specs/` is the truth about how the
+  system behaves today. `openspec/changes/<name>/` is one proposed change, reviewed before any code
+  is written. Archiving a change merges it into the specs, so the specs grow with the code.
+  `openspec/config.yaml` feeds project context and rules into every step; `openspec/constitution.md`
+  holds the rules nobody may break.
+- **propose** writes four artifacts: `proposal.md` (why, what changes, non-goals),
+  `specs/<capability>/spec.md` (a *delta*: ADDED / MODIFIED / REMOVED requirements, each with
+  WHEN/THEN scenarios), `design.md` (decisions and the alternatives rejected) and `tasks.md`
+  (checkbox list). Review: is every requirement testable, are non-goals honest, is the design
+  choice the one you would make? Try: `openspec show <change>`, `openspec validate <change> --strict`,
+  `openspec status --change <change>`.
+- **apply** works `tasks.md` top to bottom and ticks each box. Scenarios become tests. If the code
+  needs to differ from the spec, update the spec delta first. Review: pick one scenario and find
+  its test. Try: keep `tasks.md` open and watch the boxes tick.
+- **archive** validates, merges the delta into `openspec/specs/<capability>/spec.md` and moves the
+  change to `openspec/changes/archive/`. Review: read the merged spec; this is what the next
+  change builds on. Try: `openspec list --specs`, `openspec view`.
+- **Optional:** `/opsx:explore` (Codex: `$openspec-explore`) is a thinking partner before
+  proposing. Nothing gets written.
+
 ## Commands
 
 ```bash

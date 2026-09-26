@@ -1,0 +1,61 @@
+schema: spec-driven
+
+context: |
+  Project: I Hate Money (agentic-workshop fork) — a Flask 3 web app for shared budgets.
+  A project has members (with a weight); members pay bills; each bill is split between its owers.
+
+  Tech stack: Python 3.11+, Flask 3, Jinja + WTForms (Flask-WTF), SQLAlchemy 2 + Flask-Migrate
+  (Alembic), SQLite by default (PostgreSQL and MariaDB supported), Flask-Babel, Flask-RESTful,
+  SQLAlchemy-Continuum for the change history, pytest, uv, ruff.
+
+  Architecture:
+    - models.py — Project → Person (members) → Bill (payer, owers, amount, date, currency);
+      Project, Person and Bill are versioned by Continuum (<table>_version tables)
+    - web.py — every page, one blueprint; project pages under /<project_id>/, g.project is set
+    - forms.py — WTForms; BillForm.export() builds a Bill, save() updates one; the API reuses them
+    - api/common.py + api/v1/resources.py — REST API used by the mobile app (docs/api.md)
+    - history.py + templates/history.html — change log per type (Project, Person, Bill only)
+    - migrations/versions/ — Alembic revisions, applied by create_app() on every startup
+    - tests/ — budget_test.py (web), api_test.py, history_test.py, import_test.py, main_test.py
+
+  Core principles (full text, binding: openspec/constitution.md — read it before proposing):
+    1. Simplicity First — existing stack only, no new runtime deps, no background workers,
+       schedulers or cron, pages work without JavaScript
+    2. Every Schema Change Is Migrated — Alembic up and down, SQLite/PostgreSQL/MariaDB
+    3. Test Every Behaviour — IhatemoneyTestCase classes; no network, no sleeps, "today" replaceable
+    4. Public Contracts Stay Stable — API and exports backward compatible, docs/api.md updated
+    5. Money Changes Are Accountable and Translatable — history for balance changes, _() strings
+
+  Build gotchas:
+    - The test fixture calls db.create_all(): a new TABLE without a migration passes the tests and
+      breaks the running app. Start the app (uv run flask --app workshop run) after model changes.
+    - Wrap strings in _(); never edit messages.pot or .po files
+    - ruff format and ruff check are not run by pytest; run them before calling a task done
+
+rules:
+  proposal:
+    - "If the request needs more than about 10 requirements, scope this change to the first useful vertical slice and list the rest under a 'Follow-up changes' heading"
+    - Include a "Non-goals" section to keep scope tight
+    - State which pages, API endpoints and database tables change
+  design:
+    - Name the models, views, forms, templates and migration files that change
+    - Justify any new module, dependency or JavaScript against Principle I
+    - Say when and how date-dependent work happens without a background job, and how tests control "today"
+  specs:
+    - Every requirement has at least one "#### Scenario:" in WHEN/THEN form
+    - Cover the unhappy paths (validation errors, unknown ids, other projects' data, forbidden state changes)
+  tasks:
+    - Include the Alembic migration as its own task, and a task to start the app on an existing database
+    - Include tests in the matching test module (budget_test.py, api_test.py, history_test.py, import_test.py)
+    - "End with verification tasks: ruff format, ruff check, the full test suite"
+
+operations:
+  apply:
+    guidance:
+      - Test suite - uv run --extra dev pytest -q (in-memory SQLite, no network)
+      - After a model change, add the migration and start the app once before running the tests
+  archive:
+    guidance:
+      - Run "openspec validate <change> --strict" first and fix what it reports
+      - Confirm every scenario in the change's spec deltas is covered by a test
+      - Confirm the migration upgrades an existing database and that docs/api.md covers new endpoints
