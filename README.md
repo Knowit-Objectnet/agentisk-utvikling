@@ -19,13 +19,14 @@ Then follow `README.md` on that branch.
 | | Spec Kit | OpenSpec | The feature |
 |---|---|---|---|
 | Spring PetClinic (Java) | `petclinic/speckit` | `petclinic/openspec` | Vet appointments with schedules |
+| I Hate Money (Python, Flask) | `ihatemoney/speckit` | `ihatemoney/openspec` | Recurring bills |
 | fakeredis (Python) | `fakeredis/speckit` | `fakeredis/openspec` | Time control, so tests never sleep |
 
 ## Needs
 
 - An agent: Claude Code, opencode or Codex
 - PetClinic: Java 17+
-- fakeredis: [uv](https://docs.astral.sh/uv/)
+- I Hate Money and fakeredis: [uv](https://docs.astral.sh/uv/)
 - Spec Kit: bash (WSL or Git Bash on Windows)
 - OpenSpec: Node 20+ and `npm i -g @fission-ai/openspec@1.13.2`
 
