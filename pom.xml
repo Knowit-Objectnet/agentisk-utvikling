@@ -183,6 +183,18 @@
   <build>
     <plugins>
       <plugin>
+        <!-- Workshop: the MySQL/Postgres suites need Docker (Testcontainers), so plain `./mvnw test` skips them.
+             Run them with `./mvnw test -Ddocker.tests=true`. -->
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <excludes>
+            <exclude>**/*MySql*</exclude>
+            <exclude>**/*Postgres*</exclude>
+          </excludes>
+        </configuration>
+      </plugin>
+      <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-enforcer-plugin</artifactId>
         <executions>
@@ -320,6 +332,25 @@
   </licenses>
 
   <profiles>
+    <profile>
+      <id>docker-tests</id>
+      <activation>
+        <property>
+          <name>docker.tests</name>
+        </property>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <excludes combine.self="override" />
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
     <profile>
       <id>css</id>
       <build>

@@ -43,7 +43,7 @@ Every user-visible behaviour MUST be pinned by a test.
   repositories, asserting status, view name, model attributes and validation errors.
 - Persistence behaviour: `@DataJpaTest` in `ClinicServiceTests` against H2.
 - A bug fix MUST start with a failing test that reproduces it.
-- The fast suite (`./mvnw -B test -Dtest='!*Postgres*,!*MySql*' -Dsurefire.failIfNoSpecifiedTests=false`)
+- The fast suite (`./mvnw test`)
   MUST pass before a change is considered done.
 
 ### IV. Every Database, Every Language

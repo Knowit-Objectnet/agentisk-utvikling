@@ -19,6 +19,8 @@ This branch is a workshop. The user drives one feature through these steps, in o
 | 6 | implement | `/speckit-implement` | `/speckit.implement` | `$speckit-implement` |
 
 - Do only the step the user ran, then stop so they can review it.
+- Tests are always part of the work. `/speckit-tasks` MUST generate test tasks, even though its
+  template calls them optional: the constitution requires a test for every behaviour.
 - End every step with one line naming the next step, in the syntax of the harness you are
   running in, plus what to review first. Example: `Next: /speckit-clarify (review spec.md first)`.
 - If the user types `next` or asks what to do now, check `specs/` (which of `spec.md`, `plan.md`,
@@ -32,8 +34,9 @@ This branch is a workshop. The user drives one feature through these steps, in o
 # Run the app on http://localhost:8080 (H2 in-memory, seeded from db/h2/data.sql)
 ./mvnw spring-boot:run
 
-# Fast test run: skips the MySQL/Postgres Testcontainers suites (no Docker needed)
-./mvnw -B test -Dtest='!*Postgres*,!*MySql*' -Dsurefire.failIfNoSpecifiedTests=false
+# Test suite (~15 s, H2 only; the MySQL/Postgres Testcontainers suites are excluded in pom.xml,
+# run them with -Ddocker.tests=true if you have Docker)
+./mvnw test
 
 # Single test class
 ./mvnw -B test -Dtest=VisitControllerTests
