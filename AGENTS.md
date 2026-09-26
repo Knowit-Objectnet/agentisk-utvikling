@@ -5,6 +5,25 @@ Guidance for coding agents (Claude Code, opencode, ...) working in this reposito
 Spring PetClinic: a Spring Boot 4 / Java 17+ sample app (Spring MVC + Thymeleaf, Spring Data JPA,
 H2 by default, optional MySQL/Postgres). Owners have pets, pets have visits, vets have specialties.
 
+## Workshop flow (OpenSpec)
+
+This branch is a workshop. The user drives one change through these steps, in order:
+
+| # | Step | Claude Code | opencode | Codex |
+|---|---|---|---|---|
+| 1 | propose | `/opsx:propose` | `/opsx-propose` | `$openspec-propose` |
+| 2 | apply | `/opsx:apply` | `/opsx-apply` | `$openspec-apply-change` |
+| 3 | archive | `/opsx:archive` | `/opsx-archive` | `$openspec-archive-change` |
+
+Before archive, `openspec validate <change> --strict` must pass.
+
+- Do only the step the user ran, then stop so they can review it.
+- End every step with one line naming the next step, in the syntax of the harness you are
+  running in, plus what to review first. Example: `Next: /opsx:apply (review tasks.md first)`.
+- If the user types `next` or asks what to do now, check `openspec/changes/` to see where they
+  are and answer the same way. Do not run the step for them.
+- After archive, point them to "Finished early?" in `README.md`.
+
 ## Commands
 
 ```bash
