@@ -54,6 +54,9 @@ Open your harness in this folder (`claude`, `opencode` or `codex`) and type:
 
 In opencode start with `/opsx-propose`, in Codex with `$openspec-propose`.
 
+The agent may ask you one question first, usually which slice to build. Answering it is part of
+propose. Aim for about 45 minutes on propose and your review, then apply group by group.
+
 Read what the agent writes before you move on. After each step it tells you the next command.
 Lost? Type `next`. Want to know why? Type `explain`. You won't finish the whole feature, and that's
 fine: the point is to see what each step does. The agent explains each step as you go.

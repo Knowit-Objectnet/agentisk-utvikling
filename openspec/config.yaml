@@ -19,7 +19,8 @@ context: |
     - tests/ — budget_test.py (web), api_test.py, history_test.py, import_test.py, main_test.py
 
   Core principles (full text, binding: openspec/constitution.md — read it before proposing):
-    1. Simplicity First — existing stack only, no new runtime deps, no background workers,
+    1. Simplicity First — pyproject's runtime deps only (incl. SQLAlchemy-Continuum,
+       python-dateutil), no new ones, no background workers,
        schedulers or cron, pages work without JavaScript
     2. Every Schema Change Is Migrated — Alembic up and down, SQLite/PostgreSQL/MariaDB
     3. Test Every Behaviour — IhatemoneyTestCase classes; no network, no sleeps, "today" replaceable
@@ -28,32 +29,37 @@ context: |
 
   Build gotchas:
     - The test fixture calls db.create_all(): a new TABLE without a migration passes the tests and
-      breaks the running app. Start the app (uv run flask --app workshop run) after model changes.
+      breaks the running app. Run "uv run flask --app workshop db check -d ihatemoney/migrations"
+      after model changes (it applies the migrations to workshop.db and exits).
+    - A new column on Project, Person or Bill also goes on its _version table (Continuum)
+    - SQLite here ignores foreign keys; PostgreSQL and MariaDB in CI enforce them
     - Wrap strings in _(); never edit messages.pot or .po files
-    - ruff format and ruff check are not run by pytest; run them before calling a task done
+    - Run "ruff check ." before calling a task done; ruff-format new files only
 
 rules:
   proposal:
-    - "If the request needs more than about 10 requirements, scope this change to the first useful vertical slice and list the rest under a 'Follow-up changes' heading"
+    - "If the request needs more than about 5 requirements or 3 task groups, scope this change to the first useful vertical slice (about 2 hours of apply) and list the rest under a 'Follow-up changes' heading"
     - Include a "Non-goals" section to keep scope tight
     - State which pages, API endpoints and database tables change
   design:
     - Name the models, views, forms, templates and migration files that change
     - Justify any new module, dependency or JavaScript against Principle I
     - Say when and how date-dependent work happens without a background job, and how tests control "today"
+    - End with a "Constitution check" table, one row per principle I to V
   specs:
     - Every requirement has at least one "#### Scenario:" in WHEN/THEN form
     - Cover the unhappy paths (validation errors, unknown ids, other projects' data, forbidden state changes)
   tasks:
-    - Include the Alembic migration as its own task, and a task to start the app on an existing database
+    - Include the Alembic migration as its own task, followed by a db check task on an existing workshop.db
     - Include tests in the matching test module (budget_test.py, api_test.py, history_test.py, import_test.py)
-    - "End with verification tasks: ruff format, ruff check, the full test suite"
+    - "End with verification tasks: ruff check, db check, the full test suite"
 
 operations:
   apply:
     guidance:
+      - Do one task group (one "##" heading in tasks.md) per run, then stop and report how many tasks are left
       - Test suite - uv run --extra dev pytest -q (in-memory SQLite, no network)
-      - After a model change, add the migration and start the app once before running the tests
+      - After a model change, add the migration and run db check before running the tests
   archive:
     guidance:
       - Run "openspec validate <change> --strict" first and fix what it reports

@@ -22,17 +22,20 @@ tool while you do it.
 ### Running the steps
 
 - Do only the step the user ran, then stop so they can review it.
-- **propose: one slice per change.** If the request needs more than about 10 requirements, propose
-  only the first useful vertical slice as this change and list the rest in `proposal.md` under
-  "Follow-up changes". The user runs the whole flow again for each follow-up.
+- **propose: one slice per change.** If the request needs more than about 5 requirements or 3
+  task groups, propose only the first useful vertical slice (about 2 hours of apply) as this
+  change and list the rest in `proposal.md` under "Follow-up changes". The user runs the whole
+  flow again for each follow-up.
 - **apply: one task group per run.** Finish and test one group, tick its boxes, then stop and
-  report how many tasks are left. The user runs apply again for the next group.
+  report how many tasks are left. The user runs apply again for the next group. This overrides
+  the apply skill's "keep going until done".
 - **archive only a finished change.** Archive merges the delta into `openspec/specs/`, which means
   "this is how the system behaves now". If tasks are still open, say so plainly, recommend NOT
   archiving (leave the change active and come back to it), and never pick "sync" for them.
 - Before archive, `openspec validate <change> --strict` must pass.
 - The `openspec` CLI prints its own `Next: openspec ...` hints. Those are for you; the user only
-  ever gets the slash command.
+  ever gets the slash command. Don't print the skill's own closing prompt either: your `Next:`
+  line replaces it.
 - End every step with one line naming the next step, in the syntax of the harness you are
   running in, plus what to review first. Example: `Next: /opsx:apply (review tasks.md first)`.
   After a partial apply, name both options: `Next: /opsx:apply (group 2) or /opsx:archive once all
@@ -70,7 +73,7 @@ What to teach:
   WHEN/THEN scenarios), `design.md` (decisions and the alternatives rejected) and `tasks.md`
   (checkbox list). Review: is every requirement testable, are non-goals honest, is the design
   choice the one you would make? Try: `openspec show <change>`, `openspec validate <change> --strict`,
-  `openspec status --change <change>`.
+  `openspec status --change <change>` (its `Next: openspec ...` line is for the agent).
 - **apply** works `tasks.md` top to bottom and ticks each box. Scenarios become tests. If the code
   needs to differ from the spec, update the spec delta first. Review: pick one scenario and find
   its test. Try: keep `tasks.md` open and watch the boxes tick.
