@@ -16,8 +16,9 @@ Deferred TODOs: none.
 The maintainers put simplicity and stability above new features (see `UPSTREAM-README.md`).
 Every change MUST be the simplest thing that works for a small, self-hosted app.
 
-- Use the existing stack only: Flask, Jinja, WTForms, SQLAlchemy + Alembic, Flask-Babel,
-  Flask-RESTful. A new runtime dependency requires an amendment to this constitution.
+- Use the existing stack only: the runtime dependencies in `pyproject.toml` (Flask, Jinja,
+  WTForms, SQLAlchemy + Alembic, SQLAlchemy-Continuum, Flask-Babel, Flask-RESTful,
+  python-dateutil, ...). A new runtime dependency requires an amendment to this constitution.
 - The app is one WSGI process that an admin can run anywhere. No background workers, task queues,
   schedulers or cron jobs: work happens inside a request or a `flask` CLI command.
 - Every page MUST work without JavaScript. Keep the little JavaScript there is optional.
@@ -30,8 +31,10 @@ maintain it.
 
 - Every change to a model's columns or tables MUST come with an Alembic revision in
   `ihatemoney/migrations/versions/` that upgrades and downgrades.
-- Migrations MUST run on SQLite, PostgreSQL and MariaDB (CI tests all three); use
-  `op.batch_alter_table` for column changes so SQLite works.
+- Migrations MUST run on SQLite, PostgreSQL and MariaDB (CI tests all three). On SQLite,
+  changing or dropping a column or adding a foreign key needs `op.batch_alter_table`.
+- A migration MUST leave no drift: `flask --app workshop db check -d ihatemoney/migrations`
+  passes after it.
 - Existing projects MUST keep working after the upgrade: when new columns need values for old
   rows, the migration fills them.
 
@@ -65,8 +68,9 @@ The mobile app and other clients depend on the API; people depend on their expor
 
 ## Code Quality Standards
 
-- Code MUST pass `uv run --extra dev ruff format .` and `uv run --extra dev ruff check .`
-  (migrations are excluded from ruff).
+- `uv run --extra dev ruff check .` MUST pass (CI runs it; migrations are excluded). New files
+  MUST be `ruff format` clean. Existing files are not, so match their style and never reformat
+  code a change does not touch.
 - Follow the existing structure: views in `web.py`, forms in `forms.py`, models in `models.py`,
   API handlers in `api/common.py`. A new module requires a new domain concept, not preference.
 - State-changing actions MUST use `POST` with the CSRF-protected forms, never a `GET` link.
@@ -75,9 +79,10 @@ The mobile app and other clients depend on the API; people depend on their expor
 
 - One feature per branch; commit messages follow Conventional Commits (`feat:`, `fix:`, `docs:`,
   `test:`, `chore:`).
-- A change is done when: the full suite is green, ruff is clean, the app starts both on a fresh
-  database and on one created before the change (`uv run flask --app workshop run`), the feature
-  works in the browser, and each of the spec's acceptance scenarios is covered by a test.
+- A change is done when: the full suite is green, `ruff check` is clean, `db check` passes on a
+  database created before the change, the feature works in the browser
+  (`uv run flask --app workshop run`), and each of the spec's acceptance scenarios is covered by a
+  test.
 
 ## Governance
 

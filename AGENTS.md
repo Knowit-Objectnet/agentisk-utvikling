@@ -29,10 +29,12 @@ tool while you do it.
   requires a test for every behaviour.
 - **implement: one user story per run.** Do the setup and foundational phases plus the next story,
   test it, tick its boxes, then stop and report how many tasks are left. The user runs implement
-  again for the next story.
+  again for the next story. This overrides the implement skill's "execute all tasks".
 - **analyze:** a deviation already justified in the plan's Complexity Tracking table is at most
-  HIGH, not CRITICAL. If the user asks you to fix findings, list every file you changed and
-  suggest re-running analyze.
+  HIGH, not CRITICAL (this overrides the analyze skill). If the user asks you to fix findings,
+  list every file you changed, give an old-to-new map if task IDs moved, and suggest re-running
+  analyze.
+- The `specify` CLI is not installed. The scripts in `.specify/scripts/bash/` cover every step.
 - End every step with one line naming the next step, in the syntax of the harness you are
   running in, plus what to review first. Example: `Next: /speckit-clarify (review spec.md first)`.
 - If the user types `next` or asks what to do now, check `specs/` (which of `spec.md`, `plan.md`,

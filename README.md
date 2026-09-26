@@ -53,6 +53,8 @@ Open your harness in this folder (`claude`, `opencode` or `codex`) and type:
 
 In opencode start with `/speckit.specify`, in Codex with `$speckit-specify`.
 
+Aim to spend about an hour on specify to analyze, then implement the first user story.
+
 Read what the agent writes before you move on. After each step it tells you the next command.
 Lost? Type `next`. Want to know why? Type `explain`. You won't finish the whole feature, and that's
 fine: the point is to see what each step does. The agent explains each step as you go.
