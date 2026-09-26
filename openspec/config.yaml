@@ -30,7 +30,8 @@ context: |
   Build gotchas:
     - The test fixture calls db.create_all(): a new TABLE without a migration passes the tests and
       breaks the running app. Run "uv run flask --app workshop db check -d ihatemoney/migrations"
-      after model changes (it applies the migrations to workshop.db and exits).
+      after model changes (it applies the migrations to workshop.db and exits). It always lists
+      5 known upstream differences (see AGENTS.md); only other lines are yours.
     - A new column on Project, Person or Bill also goes on its _version table (Continuum)
     - SQLite here ignores foreign keys; PostgreSQL and MariaDB in CI enforce them
     - Wrap strings in _(); never edit messages.pot or .po files

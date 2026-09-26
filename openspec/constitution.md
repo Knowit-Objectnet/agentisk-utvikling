@@ -24,8 +24,8 @@ maintain it.
   `ihatemoney/migrations/versions/` that upgrades and downgrades.
 - Migrations MUST run on SQLite, PostgreSQL and MariaDB (CI tests all three). On SQLite,
   changing or dropping a column or adding a foreign key needs `op.batch_alter_table`.
-- A migration MUST leave no drift: `flask --app workshop db check -d ihatemoney/migrations`
-  passes after it.
+- After a migration, `flask --app workshop db check -d ihatemoney/migrations` MUST list nothing
+  beyond the 5 differences upstream already has (listed in `AGENTS.md`).
 - Existing projects MUST keep working after the upgrade: when new columns need values for old
   rows, the migration fills them.
 
@@ -70,8 +70,8 @@ The mobile app and other clients depend on the API; people depend on their expor
 
 - One feature per branch; commit messages follow Conventional Commits (`feat:`, `fix:`, `docs:`,
   `test:`, `chore:`).
-- A change is done when: the full suite is green, `ruff check` is clean, `db check` passes on a
-  database created before the change, the feature works in the browser
+- A change is done when: the full suite is green, `ruff check` is clean, `db check` lists
+  nothing new on a database created before the change, the feature works in the browser
   (`uv run flask --app workshop run`), and each of the spec's acceptance scenarios is covered by a
   test.
 
