@@ -7,7 +7,9 @@ H2 by default, optional MySQL/Postgres). Owners have pets, pets have visits, vet
 
 ## Workshop flow (OpenSpec)
 
-This branch is a workshop. The user drives one change through these steps, in order:
+This branch is a workshop. The user is here to **learn OpenSpec by using it** on one large
+feature. They may not finish, and that is fine. Your job is to run each step well AND teach the
+tool while you do it.
 
 | # | Step | Claude Code | opencode | Codex |
 |---|---|---|---|---|
@@ -15,9 +17,10 @@ This branch is a workshop. The user drives one change through these steps, in or
 | 2 | apply | `/opsx:apply` | `/opsx-apply` | `$openspec-apply-change` |
 | 3 | archive | `/opsx:archive` | `/opsx-archive` | `$openspec-archive-change` |
 
-Before archive, `openspec validate <change> --strict` must pass.
+### Running the steps
 
 - Do only the step the user ran, then stop so they can review it.
+- Before archive, `openspec validate <change> --strict` must pass.
 - The `openspec` CLI prints its own `Next: openspec ...` hints. Those are for you; the user only
   ever gets the slash command.
 - End every step with one line naming the next step, in the syntax of the harness you are
@@ -25,6 +28,41 @@ Before archive, `openspec validate <change> --strict` must pass.
 - If the user types `next` or asks what to do now, check `openspec/changes/` to see where they
   are and answer the same way. Do not run the step for them.
 - After archive, point them to "Finished early?" in `README.md`.
+
+### Teaching
+
+- **First step of the session:** open with at most 4 lines on what OpenSpec is (below), then do
+  the work.
+- **After every step:** before the `Next:` line, add a short block headed `What just happened`
+  (at most 6 lines): what this step is for, which files it wrote and what each holds, what the
+  user should check when reviewing, and one thing to try (a CLI command or an edit).
+- **`explain`:** if the user types `explain` (or asks why/how), explain the current step in more
+  depth using their own artifacts as the examples. Quote a requirement, a scenario, a task.
+- **Changes of mind:** if the user wants something different, show the OpenSpec way: edit the
+  artifact (proposal, spec delta, design or tasks) first, then the code. The spec leads.
+- Keep it short and concrete. Never lecture before doing the work.
+
+What to teach:
+
+- **The idea.** OpenSpec keeps two things apart. `openspec/specs/` is the truth about how the
+  system behaves today. `openspec/changes/<name>/` is one proposed change, reviewed before any code
+  is written. Archiving a change merges it into the specs, so the specs grow with the code.
+  `openspec/config.yaml` feeds project context and rules into every step; `openspec/constitution.md`
+  holds the rules nobody may break.
+- **propose** writes four artifacts: `proposal.md` (why, what changes, non-goals),
+  `specs/<capability>/spec.md` (a *delta*: ADDED / MODIFIED / REMOVED requirements, each with
+  WHEN/THEN scenarios), `design.md` (decisions and the alternatives rejected) and `tasks.md`
+  (checkbox list). Review: is every requirement testable, are non-goals honest, is the design
+  choice the one you would make? Try: `openspec show <change>`, `openspec validate <change> --strict`,
+  `openspec status --change <change>`.
+- **apply** works `tasks.md` top to bottom and ticks each box. Scenarios become tests. If the code
+  needs to differ from the spec, update the spec delta first. Review: pick one scenario and find
+  its test. Try: keep `tasks.md` open and watch the boxes tick.
+- **archive** validates, merges the delta into `openspec/specs/<capability>/spec.md` and moves the
+  change to `openspec/changes/archive/`. Review: read the merged spec; this is what the next
+  change builds on. Try: `openspec list --specs`, `openspec view`.
+- **Optional:** `/opsx:explore` (opencode `/opsx-explore`, Codex `$openspec-explore`) is a thinking partner before
+  proposing. Nothing gets written.
 
 ## Commands
 
