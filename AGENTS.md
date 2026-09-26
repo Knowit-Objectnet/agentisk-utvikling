@@ -23,22 +23,32 @@ tool while you do it.
 ### Running the steps
 
 - Do only the step the user ran, then stop so they can review it.
-- Tests are always part of the work. `/speckit-tasks` MUST generate test tasks, even though its
-  template calls them optional: the constitution requires a test for every behaviour.
+- Tests are always part of the work. `/speckit-tasks` MUST generate test tasks: the constitution
+  requires a test for every behaviour.
+- **implement: one user story per run.** Do the setup and foundational phases plus the next story,
+  test it, tick its boxes, then stop and report how many tasks are left. The user runs implement
+  again for the next story.
+- **analyze:** a deviation already justified in the plan's Complexity Tracking table is at most
+  HIGH, not CRITICAL. If the user asks you to fix findings, list every file you changed and
+  suggest re-running analyze.
 - End every step with one line naming the next step, in the syntax of the harness you are
   running in, plus what to review first. Example: `Next: /speckit-clarify (review spec.md first)`.
 - If the user types `next` or asks what to do now, check `specs/` (which of `spec.md`, `plan.md`,
   `tasks.md` exist, which tasks are ticked) to see where they are and answer the same way. Do not
   run the step for them.
-- After implement, point them to "Finished early?" in `README.md`.
+- After a partial implement, the next step is `implement` again for the next story. Point to
+  "Finished early?" in `README.md` only when every box in `tasks.md` is ticked.
 
 ### Teaching
 
-- **First step of the session:** open with at most 4 lines on what Spec Kit is (below), then do
-  the work.
+- **First step of the session:** open with at most 4 lines on what Spec Kit is (below) and on
+  how the session works (you stop after each step; their job is to read and edit what you wrote),
+  then do the work.
 - **After every step:** before the `Next:` line, add a short block headed `What just happened`
-  (at most 6 lines): what this step is for, which files it wrote and what each holds, what the
-  user should check when reviewing, and one thing to try (an edit or a follow-up question).
+  (at most 7 lines): what this step is for, which files it wrote and what each holds, the most
+  interesting thing the step found (a constitution conflict, a gap, an edge case), what the user
+  should check, and one thing to try. After specify and plan, the thing to try is an edit: name
+  one decision in their artifacts they could flip.
 - **`explain`:** if the user types `explain` (or asks why/how), explain the current step in more
   depth using their own artifacts as the examples. Quote a requirement, a plan decision, a task.
 - **Changes of mind:** if the user wants something different, show the Spec Kit way: fix the
@@ -53,7 +63,8 @@ What to teach:
   early is cheap and one fixed late is expensive.
 - **specify** writes `spec.md`: user stories with priorities (P1 is the smallest useful slice),
   acceptance scenarios, functional requirements and success criteria, with no technology in it.
-  Unclear points are marked `[NEEDS CLARIFICATION]`. Review: could a non-developer read it and agree?
+  It may ask up to 3 questions about big scope decisions it can't guess; clarify later asks the
+  finer questions. Review: could a non-developer read it and agree?
 - **clarify** asks up to 5 questions, one at a time, and records each answer in a
   `## Clarifications` section of the spec. Review: did the answers land as requirements? Try:
   answer with your own choice instead of the recommended one.
@@ -65,8 +76,9 @@ What to teach:
   have something working?
 - **analyze** is read-only. It cross-checks spec, plan and tasks for gaps, duplicates and
   constitution conflicts and ranks them. Try: ask the agent to fix the top findings, then re-run it.
-- **implement** runs the tasks phase by phase and ticks each box in `tasks.md`. Review: stop after
-  the P1 phase, run the tests and look at the result before going on.
+- **implement** runs the tasks for one story and ticks each box in `tasks.md` (`[X]`). The ticks are
+  how a later run, or a new session, knows where to resume. Review: run the tests and look at the
+  result in the app before going on.
 - **Optional:** `/speckit-checklist` (opencode `/speckit.checklist`, Codex `$speckit-checklist`)
   writes "unit tests for the requirements": questions that check the spec itself is complete.
 
@@ -103,6 +115,13 @@ What to teach:
   `src/main/resources/db/{h2,mysql,postgres}/`. A column change touches all three `schema.sql`
   files. The H2 and MySQL `data.sql` inserts are positional (no column list), so adding a column
   to `visits`, `pets` etc. breaks startup and every JPA test until those inserts are updated.
+
+- **Format before every test run**, including the first "see it fail" run: an unformatted test
+  file fails `validate` before anything compiles. `./mvnw spring-javaformat:apply && ./mvnw test`.
+- **`th:errors` elements need a message key too** (`th:text="#{error}"`), or the i18n test flags
+  their placeholder text.
+- **`@WebMvcTest` only loads controllers.** A `Formatter` or other `@Component` the controller needs
+  must be added with `includeFilters` (see `PetControllerTests` and `PetTypeFormatter`).
 
 ## Layout
 
