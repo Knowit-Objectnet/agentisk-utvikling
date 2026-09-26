@@ -19,3 +19,6 @@ ihatemoney/budget.db
 .python-version
 .coverage*
 prof
+
+# workshop
+workshop.db
