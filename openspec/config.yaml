@@ -46,9 +46,10 @@ rules:
 operations:
   apply:
     guidance:
-      - Fast suite - ./mvnw -B test -Dtest='!*Postgres*,!*MySql*' -Dsurefire.failIfNoSpecifiedTests=false
+      - Test suite - ./mvnw test (H2 only, about 15 s)
       - Run ./mvnw spring-javaformat:apply before running tests
   archive:
     guidance:
+      - Run "openspec validate <change> --strict" first and fix what it reports
       - Confirm every scenario in the change's spec deltas is covered by a test
       - Confirm all three schema.sql files and all message bundles were updated

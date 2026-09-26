@@ -18,6 +18,8 @@ This branch is a workshop. The user drives one change through these steps, in or
 Before archive, `openspec validate <change> --strict` must pass.
 
 - Do only the step the user ran, then stop so they can review it.
+- The `openspec` CLI prints its own `Next: openspec ...` hints. Those are for you; the user only
+  ever gets the slash command.
 - End every step with one line naming the next step, in the syntax of the harness you are
   running in, plus what to review first. Example: `Next: /opsx:apply (review tasks.md first)`.
 - If the user types `next` or asks what to do now, check `openspec/changes/` to see where they
@@ -30,8 +32,9 @@ Before archive, `openspec validate <change> --strict` must pass.
 # Run the app on http://localhost:8080 (H2 in-memory, seeded from db/h2/data.sql)
 ./mvnw spring-boot:run
 
-# Fast test run: skips the MySQL/Postgres Testcontainers suites (no Docker needed)
-./mvnw -B test -Dtest='!*Postgres*,!*MySql*' -Dsurefire.failIfNoSpecifiedTests=false
+# Test suite (~15 s, H2 only; the MySQL/Postgres Testcontainers suites are excluded in pom.xml,
+# run them with -Ddocker.tests=true if you have Docker)
+./mvnw test
 
 # Single test class
 ./mvnw -B test -Dtest=VisitControllerTests
