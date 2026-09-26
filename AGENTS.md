@@ -65,8 +65,8 @@ What to teach:
   acceptance scenarios, functional requirements and success criteria, with no technology in it.
   It may ask up to 3 questions about big scope decisions it can't guess; clarify later asks the
   finer questions. Review: could a non-developer read it and agree?
-- **clarify** asks up to 5 questions, one at a time, and records each answer in a
-  `## Clarifications` section of the spec. Review: did the answers land as requirements? Try:
+- **clarify** is where the user makes decisions. It asks up to 5 questions, one at a time, and
+  records each answer in a `## Clarifications` section of the spec. Review: did the answers land as requirements? Try:
   answer with your own choice instead of the recommended one.
 - **plan** writes `plan.md` (tech context, constitution check, project structure), `research.md`
   (decisions and rejected alternatives), `data-model.md`, `contracts/` and `quickstart.md`.

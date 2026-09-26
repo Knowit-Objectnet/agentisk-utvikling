@@ -56,7 +56,7 @@ fine: the point is to see what each step does. The agent explains each step as y
 | # | Step | What happens | Claude Code | opencode | Codex |
 |---|---|---|---|---|---|
 | 1 | specify | Agent writes `specs/<feature>/spec.md`: what and why, no code. It may ask up to 3 big questions first. | `/speckit-specify` | `/speckit.specify` | `$speckit-specify` |
-| 2 | clarify | Agent asks you up to 5 questions and writes the answers into the spec. | `/speckit-clarify` | `/speckit.clarify` | `$speckit-clarify` |
+| 2 | clarify | Your turn to decide: the agent asks you up to 5 questions, one at a time, and writes your answers into the spec. | `/speckit-clarify` | `/speckit.clarify` | `$speckit-clarify` |
 | 3 | plan | Agent writes `plan.md`: how, which files, checked against the constitution. | `/speckit-plan` | `/speckit.plan` | `$speckit-plan` |
 | 4 | tasks | Agent breaks the plan into `tasks.md`, grouped by user story. | `/speckit-tasks` | `/speckit.tasks` | `$speckit-tasks` |
 | 5 | analyze | Agent checks spec, plan and tasks against each other. Changes nothing; ask it to fix what it finds. | `/speckit-analyze` | `/speckit.analyze` | `$speckit-analyze` |
