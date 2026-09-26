@@ -49,7 +49,9 @@ Open your harness in this folder (`claude`, `opencode` or `codex`) and type:
 In opencode start with `/opsx-explore`, in Codex with `$openspec-explore`.
 
 Explore is OpenSpec's thinking mode: the agent reads the code and talks through the decisions
-this feature needs, and you choose. When you're done, stay in the same session and type:
+this feature needs, and you choose. Its recommendations are defaults, not answers, so disagree
+when you'd decide differently. Explore has no fixed end: when you've made the calls you care
+about, ask it for a summary. Then, in the same session, type:
 
 ```text
 /opsx:propose add-vet-appointments
