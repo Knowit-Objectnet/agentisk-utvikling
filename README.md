@@ -1,106 +1,67 @@
 # Spring PetClinic · Spec Kit
 
-## 1. Setup
+## The app
 
-- An agent: Claude Code, opencode or Codex
-- Java 17+
-- bash (WSL/Git Bash on Windows)
+PetClinic is a small website for a vet clinic, built with Spring Boot. Staff look up owners, add
+their pets, and book visits. Every page is a Spring controller plus a Thymeleaf template. Data
+lives in an in-memory H2 database, reached through the owner: an owner has pets, a pet has visits.
+
+```mermaid
+flowchart LR
+    B[Browser] --> C["Controllers<br/>(Owner, Pet, Visit, Vet)"]
+    C --> T[Thymeleaf pages]
+    C --> R[OwnerRepository]
+    R --> DB[(H2 database)]
+    subgraph Data
+        O[Owner] -->|has| P[Pet] -->|has| V[Visit]
+    end
+    DB --- Data
+```
+
+## The problem
+
+Owners call to cancel visits, but the app can only add them. Add cancel: the owner page shows
+each visit as scheduled or cancelled, upcoming visits get a Cancel button, and cancelled visits
+stay in the history. Visits in the past can't be cancelled.
+
+## Getting started
+
+Needs Java 17+, bash (WSL or Git Bash on Windows).
 
 ```bash
-./mvnw -B test -Dtest='!*Postgres*,!*MySql*' -Dsurefire.failIfNoSpecifiedTests=false
-./mvnw spring-boot:run      # http://localhost:8080
+./mvnw spring-boot:run      # look around at http://localhost:8080, then Ctrl+C
 git checkout -b my-cancel-visit
 ```
 
-## 2. Steps
+Open your harness in this folder (`claude`, `opencode` or `codex`) and type:
 
-Read `.specify/memory/constitution.md` first. Review each step's output before the next.
-
-| Step | Claude Code | opencode | Codex |
-|---|---|---|---|
-| specify | `/speckit-specify` | `/speckit.specify` | `$speckit-specify` |
-| clarify | `/speckit-clarify` | `/speckit.clarify` | `$speckit-clarify` |
-| plan | `/speckit-plan` | `/speckit.plan` | `$speckit-plan` |
-| tasks | `/speckit-tasks` | `/speckit.tasks` | `$speckit-tasks` |
-| analyze | `/speckit-analyze` | `/speckit.analyze` | `$speckit-analyze` |
-| implement | `/speckit-implement` | `/speckit.implement` | `$speckit-implement` |
-
-## 3. Task
-
-> Receptionists need to cancel an upcoming visit when an owner calls. On the owner details page each
-> visit should show whether it's scheduled or cancelled, upcoming visits get a Cancel action, and
-> cancelled visits stay visible in history, marked as cancelled. Visits in the past can't be cancelled.
-
-All seed visits are in the past. Book a future one first:
-
-```bash
-curl -s -c jar -b jar -o /dev/null -w '%{http_code}\n' -X POST \
-  -d "date=$(date -v+3d +%F 2>/dev/null || date -d '+3 days' +%F)&description=checkup" \
-  http://localhost:8080/owners/6/pets/7/visits/new
+```text
+/speckit-specify Receptionists need to cancel an upcoming visit when an owner calls. On the owner details page each visit shows whether it is scheduled or cancelled, upcoming visits get a Cancel action, and cancelled visits stay visible in the history, marked as cancelled. Visits in the past can't be cancelled.
 ```
 
-## 4. Done when
+In opencode start with `/speckit.specify`, in Codex with `$speckit-specify`.
 
-- [ ] Visit status persisted; column in all 3 `db/*/schema.sql`; seed visits load as scheduled
-- [ ] Owner page shows status; Cancel is a **POST** form, only on upcoming scheduled visits; cancelled visits stay listed
-- [ ] Server rejects: past visit, already cancelled, mismatched owner/pet/visit ids
-- [ ] New strings in `messages.properties` + the 9 translated files (`messages_en` stays empty)
-- [ ] `@WebMvcTest` for happy path + each rejection; persistence test for status
-- [ ] Fast suite green and `./mvnw -B validate` passes
-- [ ] Works in the running app
+Read what the agent wrote before you move on. After each step it tells you the next command.
+Lost? Type `next`.
 
-## 5. Hints
+## Steps
 
-<details><summary>Blank visit saved / validation fails on save</summary>
+| # | Step | What happens | Claude Code | opencode | Codex |
+|---|---|---|---|---|---|
+| 1 | specify | Agent writes `specs/<feature>/spec.md`: what and why, no code. | `/speckit-specify` | `/speckit.specify` | `$speckit-specify` |
+| 2 | clarify | Agent asks you a few questions and updates the spec. | `/speckit-clarify` | `/speckit.clarify` | `$speckit-clarify` |
+| 3 | plan | Agent writes `plan.md`: how, which files, checked against the constitution. | `/speckit-plan` | `/speckit.plan` | `$speckit-plan` |
+| 4 | tasks | Agent breaks the plan into `tasks.md`. | `/speckit-tasks` | `/speckit.tasks` | `$speckit-tasks` |
+| 5 | analyze | Agent checks spec, plan and tasks for gaps. Changes nothing. | `/speckit-analyze` | `/speckit.analyze` | `$speckit-analyze` |
+| 6 | implement | Agent works through the tasks: code, tests, translations. | `/speckit-implement` | `/speckit.implement` | `$speckit-implement` |
 
-`VisitController` has a class-wide `@ModelAttribute` that runs before every handler. Put the cancel endpoint elsewhere.
+## Finished early?
 
-</details>
+Run the same steps again for one of these:
 
-<details><summary>App won't start after adding a column</summary>
-
-`db/h2/data.sql` and `db/mysql/data.sql` insert visits positionally. Add the value.
-
-</details>
-
-<details><summary>Null id in persistence test</summary>
-
-`OwnerRepository.save()` merges. Flush, clear, reload the owner, then assert.
-
-</details>
-
-<details><summary>MockMvc `xpath()` throws</summary>
-
-HTML5 isn't XML. Use `content().string(containsString(...))`.
-
-</details>
-
-<details><summary>Build fails before tests run</summary>
-
-`./mvnw spring-javaformat:apply`. No `http://` URLs anywhere (localhost is fine).
-
-</details>
-
-<details><summary>`I18nPropertiesSyncTest` fails</summary>
-
-Literal text in a template, or a missing key. `messages_en.properties` has no trailing newline.
-
-</details>
-
-<details><summary>405 when testing with curl</summary>
-
-Don't use `curl -L -X POST`.
-
-</details>
-
-## 6. Next
-
-- Reschedule an upcoming visit (same rules)
+- Reschedule an upcoming visit (same rules as cancel)
 - Upcoming-visits page: next 7 days, all owners, paginated
-
-## 7. Advanced
-
-- Vets on visits: assign a vet, show schedules, reject double-booking
+- Vets on visits: assign a vet, show their schedule, reject double-booking
 - Spring Security: receptionist and vet roles (amend the constitution first)
 - Flyway migrations for H2, MySQL and Postgres (amend the constitution first)
-- Owner JSON API for visits (amend the constitution first)
+- JSON API for an owner's visits (amend the constitution first)
