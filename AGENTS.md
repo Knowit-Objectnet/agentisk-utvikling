@@ -7,7 +7,9 @@ H2 by default, optional MySQL/Postgres). Owners have pets, pets have visits, vet
 
 ## Workshop flow (Spec Kit)
 
-This branch is a workshop. The user drives one feature through these steps, in order:
+This branch is a workshop. The user is here to **learn Spec Kit by using it** on one large
+feature. They may not finish, and that is fine. Your job is to run each step well AND teach the
+tool while you do it.
 
 | # | Step | Claude Code | opencode | Codex |
 |---|---|---|---|---|
@@ -18,6 +20,8 @@ This branch is a workshop. The user drives one feature through these steps, in o
 | 5 | analyze | `/speckit-analyze` | `/speckit.analyze` | `$speckit-analyze` |
 | 6 | implement | `/speckit-implement` | `/speckit.implement` | `$speckit-implement` |
 
+### Running the steps
+
 - Do only the step the user ran, then stop so they can review it.
 - Tests are always part of the work. `/speckit-tasks` MUST generate test tasks, even though its
   template calls them optional: the constitution requires a test for every behaviour.
@@ -27,6 +31,44 @@ This branch is a workshop. The user drives one feature through these steps, in o
   `tasks.md` exist, which tasks are ticked) to see where they are and answer the same way. Do not
   run the step for them.
 - After implement, point them to "Finished early?" in `README.md`.
+
+### Teaching
+
+- **First step of the session:** open with at most 4 lines on what Spec Kit is (below), then do
+  the work.
+- **After every step:** before the `Next:` line, add a short block headed `What just happened`
+  (at most 6 lines): what this step is for, which files it wrote and what each holds, what the
+  user should check when reviewing, and one thing to try (an edit or a follow-up question).
+- **`explain`:** if the user types `explain` (or asks why/how), explain the current step in more
+  depth using their own artifacts as the examples. Quote a requirement, a plan decision, a task.
+- **Changes of mind:** if the user wants something different, show the Spec Kit way: fix the
+  earliest artifact that is wrong (spec, then plan, then tasks) and redo the steps after it.
+- Keep it short and concrete. Never lecture before doing the work.
+
+What to teach:
+
+- **The idea.** Spec Kit goes from *what* to *how* to *do*, one artifact per step, all in
+  `specs/<NNN-feature>/`. `.specify/memory/constitution.md` holds the project's rules, and the plan
+  step checks the design against it. Each step reads the previous artifacts, so a mistake fixed
+  early is cheap and one fixed late is expensive.
+- **specify** writes `spec.md`: user stories with priorities (P1 is the smallest useful slice),
+  acceptance scenarios, functional requirements and success criteria, with no technology in it.
+  Unclear points are marked `[NEEDS CLARIFICATION]`. Review: could a non-developer read it and agree?
+- **clarify** asks up to 5 questions, one at a time, and records each answer in a
+  `## Clarifications` section of the spec. Review: did the answers land as requirements? Try:
+  answer with your own choice instead of the recommended one.
+- **plan** writes `plan.md` (tech context, constitution check, project structure), `research.md`
+  (decisions and rejected alternatives), `data-model.md`, `contracts/` and `quickstart.md`.
+  Review: the constitution check, and whether you would make the same design choices.
+- **tasks** writes `tasks.md`: numbered tasks grouped by user story, `[P]` marks tasks that can run
+  in parallel, tests come before the code they cover. Review: can you stop after the P1 phase and
+  have something working?
+- **analyze** is read-only. It cross-checks spec, plan and tasks for gaps, duplicates and
+  constitution conflicts and ranks them. Try: ask the agent to fix the top findings, then re-run it.
+- **implement** runs the tasks phase by phase and ticks each box in `tasks.md`. Review: stop after
+  the P1 phase, run the tests and look at the result before going on.
+- **Optional:** `/speckit-checklist` (opencode `/speckit.checklist`, Codex `$speckit-checklist`)
+  writes "unit tests for the requirements": questions that check the spec itself is complete.
 
 ## Commands
 
