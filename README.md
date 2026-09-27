@@ -78,3 +78,9 @@ Run the steps again for one of these:
 - Close a period: settle up, archive its bills and start fresh (there is a half-built `Archive` model)
 - Spending categories, each with a monthly budget and a warning when it's exceeded
 - A weekly email to each member saying what they owe and to whom
+
+## Licences
+
+The app is I Hate Money (BSD-style licence), see `LICENSE`; Spec Kit is MIT. What was changed for
+this workshop, and the full notices, are in `THIRD-PARTY-NOTICES.md`. This workshop is not
+affiliated with or endorsed by these projects.
