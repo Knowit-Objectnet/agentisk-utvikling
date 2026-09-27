@@ -70,3 +70,9 @@ Run the steps again for one of these:
 - Merge duplicate owners without losing a pet or a visit
 - Invoices: price per visit type, multi-pet discount, VAT, rounding per locale
 - Vaccination tracker: due and overdue vaccines per pet, with a clinic-wide overdue list
+
+## Licences
+
+The app is Spring PetClinic (Apache-2.0), see `LICENSE.txt`; Spec Kit is MIT. What was changed for
+this workshop, and the full notices, are in `THIRD-PARTY-NOTICES.md`. This workshop is not
+affiliated with or endorsed by these projects.
