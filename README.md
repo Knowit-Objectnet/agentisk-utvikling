@@ -30,3 +30,9 @@ Then follow `README.md` on that branch.
 - OpenSpec: Node 20+ and `npm i -g @fission-ai/openspec@1.13.2`
 
 No Docker and no database server. Tests run locally in seconds.
+
+## Licences
+
+Each branch carries its app's own licence and a `THIRD-PARTY-NOTICES.md`. Spring PetClinic is
+Apache-2.0, I Hate Money uses a BSD-style licence, and Spec Kit and OpenSpec are MIT. This workshop
+is not affiliated with or endorsed by any of these projects.
