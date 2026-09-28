@@ -7,8 +7,8 @@ agent explains each step as you go.
 ## Start
 
 ```bash
-git clone git@github.com:joexbayer/agentic-workshop.git
-cd agentic-workshop
+git clone git@github.com:Knowit-Objectnet/agentisk-utvikling.git
+cd agentisk-utvikling
 git checkout petclinic/openspec     # pick a branch below
 ```
 
