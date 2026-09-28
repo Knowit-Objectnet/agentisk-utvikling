@@ -18,4 +18,10 @@
     lsp.package = pkgs.vtsls;
   };
 
+  languages.python = {
+    enable = true;
+    package = pkgs.python312;
+    uv.enable = true;
+  };
+
 }
