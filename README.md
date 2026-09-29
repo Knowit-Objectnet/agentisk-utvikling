@@ -1,35 +1,45 @@
-# Agentic workshop
+# Agentisk utvikling
 
-Try a spec-driven workflow (Spec Kit or OpenSpec) inside your coding agent, on a big feature in a
-real codebase. You won't finish the feature. The point is to see what each step does, and the
-agent explains each step as you go.
+Dette repoet inneholder øvingsprosjekter til
+[kurset i agentisk utvikling](https://academy.knowit.no/kurs/agentisk-utvikling).
+Se [forberedelsesguiden](FORBEREDELSER.md) for hva du kan gjøre før kurset:
+ta med eget prosjekt eller en idé, og installer gjerne en kodeagent på forhånd.
+Vi anbefaler [OpenCode](https://opencode.ai/v2/docs/), men du kan bruke den
+agenten du ønsker.
 
-## Start
+## Øvingsprosjekter
+
+Har du ikke et eget prosjekt, kan du bruke et av eksemplene under. Grenene
+inneholder en egen øvelse i spesifikasjonsdrevet utvikling med Spec Kit eller
+OpenSpec: Prøv en større funksjon i en eksisterende kodebase, og la agenten
+forklare hva hvert steg gjør. Du trenger ikke bli ferdig med funksjonen.
+
+### Kom i gang
 
 ```bash
-git clone git@github.com:Knowit-Objectnet/agentisk-utvikling.git
+git clone https://github.com/Knowit-Objectnet/agentisk-utvikling.git
 cd agentisk-utvikling
-git checkout petclinic/openspec     # pick a branch below
+git checkout petclinic/openspec     # velg en gren fra tabellen under
 ```
 
-Then follow `README.md` on that branch.
+Følg deretter `README.md` på grenen du valgte.
 
-## Branches
+### Grener
 
-| | Spec Kit | OpenSpec | The feature |
+| Prosjekt | Spec Kit | OpenSpec | Oppgave |
 |---|---|---|---|
-| Spring PetClinic (Java) | `petclinic/speckit` | `petclinic/openspec` | Vet appointments with schedules |
-| I Hate Money (Python, Flask) | `ihatemoney/speckit` | `ihatemoney/openspec` | Recurring bills |
+| Spring PetClinic (Java) | `petclinic/speckit` | `petclinic/openspec` | Veterinæravtaler med timeplaner |
+| I Hate Money (Python, Flask) | `ihatemoney/speckit` | `ihatemoney/openspec` | Gjentakende regninger |
 
-## Needs
+### Forutsetninger for disse øvelsene
 
-- An agent: Claude Code, opencode or Codex
+- En kodeagent, for eksempel [OpenCode](https://opencode.ai/v2/docs/), Claude Code eller Codex
 - PetClinic: Java 17+
 - I Hate Money: [uv](https://docs.astral.sh/uv/)
-- Spec Kit: bash (WSL or Git Bash on Windows)
-- OpenSpec: Node 20+ and `npm i -g @fission-ai/openspec@1.13.2`
+- Spec Kit: bash (WSL eller Git Bash på Windows)
+- OpenSpec: Node 20+ og `npm i -g @fission-ai/openspec@1.13.2`
 
-No Docker and no database server. Tests run locally in seconds.
+Du trenger verken Docker eller en databaseserver. Testene kjører lokalt på få sekunder.
 
 ## Petters verktøy
 
@@ -114,8 +124,9 @@ oppgavene over. Flere av oppsettene finnes i mitt offentlige
   laget for agenter. Ved webarbeid kan agenten åpne en side, hente et tilgjengelighets-snapshot,
   klikke på elementer og ta skjermbilder for å kontrollere resultatet.
 
-## Licences
+## Lisenser
 
-Each branch carries its app's own licence and a `THIRD-PARTY-NOTICES.md`. Spring PetClinic is
-Apache-2.0, I Hate Money uses a BSD-style licence, and Spec Kit and OpenSpec are MIT. This workshop
-is not affiliated with or endorsed by any of these projects.
+Hver gren inneholder applikasjonens egen lisens og en `THIRD-PARTY-NOTICES.md`.
+Spring PetClinic er lisensiert under Apache-2.0, I Hate Money har en lisens i
+BSD-stil, og Spec Kit og OpenSpec er MIT-lisensiert. Denne øvelsen er ikke
+tilknyttet eller godkjent av noen av disse prosjektene.
