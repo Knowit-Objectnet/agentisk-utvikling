@@ -1,0 +1,25 @@
+{
+  "name": "agentisk-utvikling-presentation",
+  "module": "src/index.tsx",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun run src/index.tsx",
+    "dev": "bun run --watch src/index.tsx",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.14",
+    "@types/react": "^19.2",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@opentui/core": "^0.5.12",
+    "@opentui/react": "^0.5.12",
+    "react": "^19.2.8"
+  },
+  "engines": {
+    "bun": ">=1.3.0"
+  }
+}
