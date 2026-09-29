@@ -32,6 +32,11 @@ let
   };
 in
 {
+  # Keep Tau sessions and other local state out of the user-wide profile.
+  enterShell = ''
+    export TAU_HOME="$PWD/.tau/sessions"
+  '';
+
   # Tools used by the PetClinic, I Hate Money, and OpenSpec workshop branches.
   packages = with pkgs; [
     jdk17
