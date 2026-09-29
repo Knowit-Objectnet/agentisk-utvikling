@@ -7,13 +7,13 @@ let
 
   tau = pkgs.python312Packages.buildPythonApplication rec {
     pname = "tau-ai";
-    version = "0.4.5";
+    version = "0.4.6";
     pyproject = true;
 
     src = pkgs.fetchPypi {
       pname = "tau_ai";
       inherit version;
-      hash = "sha256-I+Bz4bXTK4dWFI4/CDH9nxWPHDI1ucKaFwTs1ldS9C0=";
+      hash = "sha256-PJG9PUYXx4A57YTI3iHJKrghNnhRCvYI8rV8vMYfiFM=";
     };
 
     build-system = with pkgs.python312Packages; [ hatchling ];
