@@ -4,7 +4,7 @@
     "servers": {
       "shadcn": {
         "type": "local",
-        "command": ["npx", "shadcn@latest", "mcp"],
+        "command": ["corepack", "pnpm", "exec", "varlock", "run", "--", "shadcn", "mcp"],
         "cwd": "start-app"
       }
     }

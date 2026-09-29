@@ -10,7 +10,8 @@
     "lint": "eslint",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx}\"",
     "check": "prettier --check \"**/*.{ts,tsx,js,jsx}\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "shadcn": "varlock run -- shadcn"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -39,12 +40,14 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@varlock/bitwarden-plugin": "^2.0.1",
     "@vitejs/plugin-react": "^6",
     "eslint": "^9",
     "jsdom": "^30",
     "prettier": "^3.9.6",
     "prettier-plugin-tailwindcss": "^0.8.1",
     "typescript": "^6",
+    "varlock": "^1.21.0",
     "vite": "^8",
     "vitest": "^4"
   }
