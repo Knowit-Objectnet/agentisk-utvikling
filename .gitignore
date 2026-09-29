@@ -8,6 +8,9 @@ dist/
 devenv.local.nix
 devenv.local.yaml
 
+# Tau local state
+.tau
+
 # direnv
 .direnv
 
