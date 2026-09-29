@@ -1,0 +1,515 @@
+# tau-subagents
+
+Claude Code-style autonomous subagents for [Tau](https://github.com/huggingface/tau),
+ported from [pi-subagents](https://github.com/tintinweb/pi-subagents).
+
+> **Requires upstream tau-ai ≥ 0.3.0.** Upstream tau adopted pi's event and
+> extension protocol wholesale (tau #375), so everything this extension needs
+> — the extension API, the component seam, dialogs, message renderers, the
+> `skills_enabled` config, provider usage fields — is present in every
+> supported Tau. Older 0.2.x releases (and the pre-0.2.0 fork branches) are no
+> longer supported.
+
+Gives the model an `agent` tool that delegates a task to a **subagent** — a
+second, scoped Tau coding session running in-process with its own system
+prompt, its own tool allow-list, and an in-memory transcript. Foreground
+subagents block and return their final report as the tool result. Background
+subagents return an id immediately and inject a `<task-notification>` into the
+parent conversation when they finish, which starts a new turn automatically.
+
+Also registers:
+
+- `get_subagent_result` — poll a background agent, or `wait=true` to block for it
+- `steer_subagent` — inject a message into a running (or queued) agent
+- `/agents` — interactive menu over agent types, runs, and scheduled jobs
+- an **agents strip** under the prompt (TUI mode): live subagent list with an
+  embedded conversation viewer (see "The agents strip")
+
+## Install
+
+The implementation lives in `src/tau_subagents/`; `pyproject.toml` declares
+the entry point via Tau's extension manifest (`[tool.tau]
+extensions = ["src/tau_subagents/extension.py"]`), so the repo itself is
+loadable as a Tau extension. Either try it per-run:
+
+```bash
+tau -e /path/to/tau-subagents
+```
+
+or install it permanently by symlinking the clone into Tau's user extensions:
+
+```bash
+git clone git@github.com:rian-dolphin/tau-subagents.git ~/code/tau-subagents
+ln -s ~/code/tau-subagents ~/.tau/extensions/tau-subagents
+```
+
+Update with `git pull`, then restart `tau` (or `/reload`).
+
+Beyond Tau, the extension takes a direct dependency on `textual`: the agents
+strip and conversation viewer are extension-owned Textual widgets (see "The
+agents strip").
+
+## Use
+
+Ask the model to delegate:
+
+> Use a subagent to summarize this repository's architecture.
+
+> Spawn an explore subagent to find where slash commands are registered,
+> run it in the background.
+
+`/agents` manages agents. In the TUI it opens an interactive menu (ported
+from pi's showAgentsMenu): selecting a run opens its conversation viewer (see
+"The agents strip"), falling back to a dialog submenu (view result / steer /
+stop) on hosts without mounted components. pi's create wizard and settings
+menu are not ported yet. Headless (print mode) it prints the plain-text list
+instead.
+
+## The agents strip
+
+The whole agent UI is owned by the extension as real Textual widgets
+(`src/tau_subagents/ui/`), mounted through Tau's generic *component seam*
+(`context.ui.components`: `set_slot_widget` / `open_main_view` /
+`register_key_interceptor`). Tau core stays agent-agnostic — it only hosts
+widgets.
+
+In the TUI, spawning a subagent shows a strip under the
+prompt (`AgentStripWidget`) listing `main` plus every queued/running agent (the
+Claude Code pattern). Rows are deliberately quiet: a status glyph (a hollow
+circle while running — the spinner/timer/token stats live on the agent
+tool-call row in the main chat, not here) plus the agent type and description.
+
+Navigation is focus-free (pi's fleet-list model): the strip never takes
+keyboard focus — the prompt keeps it throughout, and a pre-dispatch key
+interceptor drives the strip. `←` or `↓` at an empty prompt activates nav;
+`↑`/`↓` then move the selection, `Enter` opens the selected agent's
+conversation viewer, and `Esc` (or `↑` past the top, or typing any other key)
+deactivates nav and returns the keys to the prompt. Clicking a row opens it
+directly.
+
+`Enter` opens the conversation viewer (`ConversationViewer`) in the main area
+as a display-toggled view — the strip stays visible for peripheral fleet
+awareness, and nav stays reachable while viewing: `←` re-enters the strip
+(`↓` scrolls the viewer), so you can switch straight to another agent with
+`↑`/`↓` + `Enter`, or select the `main` row and press `Enter` (or click it) to
+close the viewer and return to the main transcript. The viewer renders the
+run's live conversation (reusing Tau's own transcript rendering), carries a
+header with label/status/detail, and embeds a steer composer: `Enter` opens
+it, type + `Enter` sends a steering message, `Esc` cancels the composer. `x`
+twice stops the run (a two-press guard), and `Esc`/`q` closes the viewer. Live
+updates are push-based — the viewer subscribes to the run's change listeners
+rather than polling. Finished agents leave the strip after a short linger;
+`/agents` still reaches their transcripts. The agent tool-call row in the main
+transcript shows a braille spinner and a live elapsed timer while the run
+executes (Tau core behavior, driven by this extension's `render_call` lines),
+plus a cumulative stats ticker (`2 turns · 5 tool uses · 41.2k tokens`)
+streamed through Tau's tool-progress seam. When a foreground run finishes, the
+row renders a completion card via the tool's `render_result` hook — status
+glyph, stats line, and a `⎿` result preview (full result and transcript path
+under Ctrl+O) — the same card family as background completion notifications,
+so foreground and background finishes read alike. Background spawns confirm in
+one line (`⎿ Running in background (agent-1)`).
+
+Esc follows pi's parent-abort semantics: interrupting the main loop while a
+foreground subagent runs cancels the child too (the run settles as
+`∅ cancelled` — neutral, not failure-red — and stays reachable via `/agents`
+and `get_subagent_result`). Background runs are untouched by Esc; they stop
+only via the viewer's `x x`, the `/agents` menu, or session shutdown.
+
+The UI installs defensively on every `session_start` (any stale controller is
+torn down and fresh widgets mounted), so `/new`, `/resume`, and session
+rebinds always land exactly one strip.
+
+## Agent types
+
+Three built-in types ship with the extension:
+
+- `general` — full coding toolset, for research and multi-step tasks
+- `explore` — read-only (`read` + `bash`), for searching and summarizing
+- `fork` — a fork of the current conversation (see "Forking the conversation")
+
+Add your own as markdown files at `.tau/agents/<name>.md` (project) or
+`~/.tau/agents/<name>.md` (user). The filename is the type name, the body is
+the subagent's system prompt, and frontmatter supports:
+
+```markdown
+---
+description: Reviews code for security issues.
+tools: read, bash
+model: gpt-5.2
+---
+You are a security reviewer. Investigate the code you are pointed at and
+report vulnerabilities with file references.
+```
+
+Project definitions win over user definitions with the same name. The name
+`fork` is reserved — a `fork.md` file is ignored (fork behavior overrides
+tools, model, and prompt assembly, so nothing in a definition file could
+apply).
+
+Agent-type frontmatter also supports:
+
+- `max_turns` — non-negative integer soft turn limit (`0` = unlimited)
+- `skills` — comma-separated skill names to preload (see below)
+- `prompt_mode` — `replace` (default) or `append` (see below)
+- `memory` — `user`, `project`, or `local` persistent memory (see below)
+- `isolation` — `worktree` to run in an isolated git worktree (see below)
+
+## Forking the conversation (`fork`)
+
+`subagent_type: fork` spawns a child that **inherits the entire
+conversation** (Claude Code's fork subagent, ADR 0005):
+
+- the parent's system prompt, byte-identical;
+- the parent's provider, model, and thinking level (`provider`/`model`/
+  `thinking`/`isolated` params are rejected with an explanation, never
+  silently dropped — the parent must not believe it spawned a cheaper
+  model);
+- the full toolset — children discover the same extensions as the parent,
+  so the serialized tool pool matches and the prompt cache prefix is
+  shared;
+- the real message history, seeded into the child session as actual
+  entries, not the text digest `inherit_context` builds.
+
+The task prompt becomes the next user turn, wrapped in a `<fork_task>`
+block.
+
+> Fork the conversation to draft unit tests for the parser changes so far,
+> in the background.
+
+Notes:
+
+- The in-flight `agent` call that spawned the fork is closed in the fork's
+  copy with a neutral `(forked here …)` tool result.
+- `resume` works on a fork like any other agent (its session stays live,
+  with the seeded history and its own turns). `schedule` is rejected: a
+  job fires later with no parent conversation to snapshot. Worktree
+  isolation and foreground/background both work (foreground and resumable
+  forks are deliberate divergences from Claude Code's one-shot,
+  background-only forks).
+- `inherit_context` is redundant for forks and ignored.
+- Token figures are not comparable to other agent types: the inherited
+  prefix bills as input on the fork's first turn.
+- Provider, model, and thinking level are snapshotted at the tool call, so
+  a queued fork runs what the parent had when it forked even if the parent
+  switches `/model` or thinking level before the fork starts. On tau-ai
+  < 0.4.0 the live thinking level is not exposed to extensions; the fork
+  then passes no override and the provider's persisted per-model level
+  applies.
+- The fork's output file records only its own messages
+  (`inheritedMessages: N` marks the seeded prefix).
+
+### Fork or `inherit_context`?
+
+Both give a subagent the parent conversation. They are different tools.
+
+| | `general` + `inherit_context` | `fork` |
+|---|---|---|
+| History | A text digest of the user and assistant turns. Tool calls and tool results are not included. | The real messages, complete. |
+| System prompt | The prompt of the agent type. | The prompt of the parent. The bytes are identical. |
+| Model, thinking | Free choice. | The parent's. Overrides are rejected. |
+| Tools | The allow-list of the agent type. | The exact tool pool of the parent. |
+| Prompt cache | Its own cache, cold at the start. | The cache of the parent, shared. |
+| Resume | Works. | Works. |
+| Schedule | Works. | Rejected: a job fires later with no conversation to fork. |
+
+Use a fork when the task needs the full context on the same model. The
+digest does not contain the file contents, the command output, or the
+diffs that tool calls produced; a fork saw all of them. Use `general`
+with `inherit_context` when a summary is sufficient, or when you want a
+different or cheaper model — a fork cannot change the model.
+
+## Worktree isolation
+
+Pass `isolation: "worktree"` to the `agent` tool (or set it in agent-type
+frontmatter, which wins) and the subagent runs inside a detached git worktree
+of the current repo instead of your working tree. When the run finishes, any
+changes are committed (`tau-agent: <description>`) and preserved on a
+`tau-agent-<id>` branch in the base repo — the result tells you to
+`git merge tau-agent-<id>`. Clean worktrees are removed without a trace.
+Isolation is strict: if the cwd is not a committed git repo, the spawn fails
+rather than silently running unisolated. Worktree agents cannot be resumed —
+their working directory is removed when the run finishes.
+
+## Output files
+
+Every run streams its child transcript as JSONL to a durable directory
+under the Tau home:
+
+    ~/.tau/subagents/<cwd-slug>-<hash>/<session>/tasks/<agent-id>.jsonl
+
+(first entry is the prompt; new messages are flushed after each turn). The
+project directory name matches Tau's own `~/.tau/sessions/` naming, but the
+files live outside `sessions/` so Tau's session index never sees them. The
+path is shown in background spawn results (`Output file: ...`), in completion
+notifications (`<output-file>` tag), and in `get_subagent_result` output, so
+you can `tail` a long-running agent from outside the conversation.
+
+Transcripts are retained indefinitely by default. Set
+`transcriptRetentionDays` to a positive number to run a retention sweep on
+session start and delete older transcripts. Set it to `0` to opt out of durable
+storage entirely — transcripts then go to the old per-uid location in the
+system temp directory. `TAU_SUBAGENTS_DIR` overrides the durable root
+(useful for tests or a relocated Tau home).
+
+## Per-agent memory (`memory:` frontmatter)
+
+Set `memory: user|project|local` on an agent type to give it a persistent
+memory directory:
+
+    user      ~/.tau/agent-memory/<name>/
+    project   <cwd>/.tau/agent-memory/<name>/
+    local     <cwd>/.tau/agent-memory-local/<name>/
+
+At spawn, a memory block is injected into the child's system prompt (before
+any preloaded skills) showing the first 200 lines of `MEMORY.md` and
+instructions to keep it as an index linking to detail files. Agents whose
+toolset can write (has `write` or `edit`) get read-write memory — the
+directory is created and read/write/edit tools are ensured; read-only
+toolsets get a read-only memory block and no directory is created.
+
+## Run records
+
+Every terminal transition (completed, steered, aborted, error, cancelled —
+including resumes) appends a compact `subagents:record` entry to the parent
+session log (id, type, description, status, result, error, turns, tool
+calls), so subagent history survives session resume. Persistence is
+best-effort and never fails a run.
+
+## Skills (`skills:` frontmatter)
+
+Children always inherit Tau's native skill discovery: every subagent session
+discovers skills on its own (`~/.tau/skills/`, `~/.agents/`, and the child
+cwd's `.tau/skills/`) and gets an `<available_skills>` index in its prompt
+plus on-demand skill expansion. The `skills:` frontmatter layers on top of
+that:
+
+- `skills: foo, bar` — preloads the named skills' full bodies into the
+  child's system prompt as `# Preloaded Skill: <name>` sections (a missing
+  name becomes a `(Skill "<name>" not found)` placeholder), so the child
+  doesn't have to read them on demand. Native discovery is turned off for
+  such agents (matching pi, which sets `noSkills` for named preloads so the
+  same skill isn't both preloaded and indexed) — the child gets exactly the
+  named skills.
+- `skills: true` (or `*` / `all`) — pins the child's resource discovery
+  (skills **and** project context files such as AGENTS.md) to the **parent**
+  working directory. This only makes a difference under
+  `isolation: worktree`, where default discovery would otherwise resolve
+  against the worktree copy — e.g. uncommitted project skills would be
+  invisible to the isolated child.
+- `skills: none` / `false` — disables the child's skill discovery entirely
+  (no `<available_skills>` index, no `/skill:` expansion).
+
+In `prompt_mode: append` the parent prompt prefix already carries the
+parent's skill index verbatim.
+
+## Provider, model, and thinking overrides
+
+The `agent` tool accepts exact `provider` and `model` IDs for the subagent. If
+`provider` is omitted, the calling session's active provider is used; if `model`
+is also omitted (and the agent type's frontmatter doesn't pin one), the calling
+session's active model is used — so subagents naturally match the parent. This
+also allows a child to use a different provider from its parent, provided that
+provider is configured and authenticated in Tau:
+
+```json
+{
+  "provider": "openai-codex",
+  "model": "gpt-5.6-sol"
+}
+```
+
+The tool also accepts `thinking` (one of `off`, `minimal`, `low`, `medium`,
+`high`, `xhigh`; default `medium`). Agent-type frontmatter `model:` and
+`thinking:` win over the corresponding tool params, matching pi's precedence.
+Note: a typo'd frontmatter `thinking:` value is silently ignored (falls back to
+the param/default), unlike the tool param, which errors.
+
+None of these apply to `fork`, which always runs the parent's provider,
+model, and thinking level (see "Forking the conversation").
+
+## `prompt_mode: append`
+
+By default (`replace`) the agent body becomes the child's base system prompt.
+With `prompt_mode: append` the child instead keeps the parent session's full
+system prompt as a byte-identical prefix, followed by a sub-agent bridge block
+(tool-usage etiquette), an `<active_agent name="..."/>` tag, an environment
+block (cwd, git branch, platform), the agent body wrapped in
+`<agent_instructions>`, and any preloaded skill sections. This makes the child
+behave like the parent with extra instructions layered on. If the parent
+prompt is unavailable, append mode falls back to replace-mode assembly.
+
+## Join modes (background notification batching)
+
+`defaultJoinMode` in settings controls how background completion notifications
+are delivered:
+
+- `smart` (default) / `group` — background agents spawned within a 100ms
+  window form a group; their completion notices are consolidated into one
+  "Background agent group completed" message. If some members are still
+  running 30s after the first finishes, a partial notification is sent
+  (`(partial — others still running)`) and the stragglers re-group on a 15s
+  cadence until everyone reports.
+- `async` — never batched; every agent notifies individually (one
+  `<task-notification>` follow-up each).
+
+Foreground agents never join groups. Members whose results were already read
+via `get_subagent_result` are skipped at delivery time. Groups need at least
+two members — a lone background agent always notifies individually.
+
+All completion notifications (individual and group) are held for 200ms before
+delivery; reading the result with `get_subagent_result` inside that window
+cancels the now-redundant notification.
+
+## Usage reporting
+
+Results include usage stats: tool uses, tokens, an estimated context size,
+and run duration. They appear in the foreground completion line
+(`Agent completed in <X>s (<N> tool uses, <K> tokens).`), the
+`get_subagent_result` header (`Usage:`), and the `steer_subagent`
+confirmation's `Current state:` line. Task notifications deliberately omit
+usage and turn counts — they stay minimal (id, description, status, result)
+since `get_subagent_result` repeats the stats and the TUI card renders them
+from `details` outside the model's context. The notification's `<result>` is
+**fit-or-fetch**: included whole when it fits the cap (500 chars individual,
+300 in group notices), otherwise replaced by a `<result-pending>` pointer to
+`get_subagent_result` — never truncated, so the parent is never tempted to
+act on partial output.
+
+Token figures come in two flavors:
+
+- **Real billed tokens** (`<K> tokens`) — from the usage
+  fields on `AssistantMessage`, populated by Tau's provider adapters.
+  Following pi's semantics, the lifetime total sums
+  `input + output + cache_write` per assistant response; cache *reads* are
+  excluded because each turn re-reads the whole cached prefix, so summing
+  them would count the prefix once per turn (pi issue #38).
+- **Context estimate** (`~<K> context tokens`) — Tau's
+  deterministic chars/4 estimate of the child's current context size.
+
+## Live activity
+
+While an agent runs, its tool-call row in the transcript animates: a braille
+spinner in place of the `▸` marker plus a live elapsed timer (Tau core's
+pending-tool rendering). For richer live detail, open the agent's view from
+the strip or `/agents` — per-event textual progress lines were deliberately
+removed as transcript noise.
+
+## Notification rendering
+
+Background completion notifications render as pi-style cards (status icon,
+bold description, dim stats line with turns/tools/tokens/duration, collapsed
+result preview, transcript path) instead of raw `<task-notification>` XML
+bubbles — the raw XML still enters the model's context unchanged. Group
+notifications stack one card per run.
+
+## Concurrency and the background queue
+
+Only **background** agents count toward a concurrency limit (`maxConcurrent`,
+default 4). Foreground agents always start immediately. When the limit is
+reached, further background spawns are **queued** FIFO — the tool reports the
+agent as `queued`, and the run starts automatically as soon as a slot frees up.
+Queued runs show up in `/agents` with status `queued`.
+
+## Steering a running agent
+
+`steer_subagent` sends a message to a running agent; it is delivered after the
+agent's current tool execution and appears as a user message in the agent's
+conversation. Messages sent to a **queued** agent (one with no live session
+yet) are held and flushed the moment its session initializes. Typing inside
+an agent's in-place view (see "The agents strip") and the `/agents` steer
+dialog use the same path.
+
+## Turn limits (`max_turns`)
+
+Pass `max_turns` to the `agent` tool (or set it in agent-type frontmatter, or
+`defaultMaxTurns` in settings) to cap how many turns an agent runs. When the
+limit is hit, the agent is steered with a wrap-up message asking it to give its
+final answer. If it keeps going past a grace period (`graceTurns`, default 5),
+it is hard-cancelled. An agent that wraps up within grace finishes with status
+`steered` (treated as success); one that has to be cancelled ends `aborted`.
+
+Precedence: agent-type frontmatter wins over the tool `max_turns` param, which
+wins over `defaultMaxTurns` from settings.
+
+## Resuming a finished agent
+
+Call the `agent` tool with `resume=<id>` and a new `prompt` to continue a
+finished agent's session — its full conversation history is kept alive. Resume
+always runs in the foreground and returns the new final answer inline. (Turn
+limits are not re-enforced on resume.)
+
+## Scheduling agents (`schedule`)
+
+Pass `schedule` on the `agent` tool to run it later or repeatedly, ported
+from pi's scheduler. Formats: 5-field cron (`0 9 * * 1` — numeric fields
+only; `*`, lists, ranges, `*/n`; minimum granularity one minute), intervals
+(`5m`, `1h`; minimum 5s), and one-shots (`+10m` relative or an ISO
+timestamp). Scheduled spawns are always background, bypass the concurrency
+queue, and deliver the normal completion notification; `schedule` is
+incompatible with `resume`, `inherit_context`, and `run_in_background:
+false`, matching pi. Jobs persist per session in
+`<cwd>/.tau/subagent-schedules/<session_id>.json` (PID-locked, atomic);
+missed fires are skipped, past one-shots are disabled. Manage jobs via
+`/agents → Scheduled jobs` (list + cancel). Times are naive local time —
+across a DST transition a fire can land up to an hour off.
+
+## Inheriting the parent conversation (`inherit_context`)
+
+By default a subagent starts with fresh context. Pass `inherit_context: true`
+on the `agent` tool (or set it in agent frontmatter; the param wins) to
+prepend a digest of the parent conversation to the child's prompt, following
+pi's design: user and assistant text turns as `[User]:` / `[Assistant]:`
+lines (tool results are dropped as too verbose), wrapped in pi's verbatim
+`# Parent Conversation Context` framing. The digest is captured at spawn
+time, so queued background runs see the conversation as of the tool call.
+Compaction summaries appear as `[User]` turns (Tau folds them into user
+messages during replay) rather than pi's `[Summary]:` framing.
+
+## Settings
+
+Settings are read from two JSON files and shallow-merged, project overriding
+user (missing or malformed files are ignored):
+
+    ~/.tau/subagents.json          user defaults
+    <cwd>/.tau/subagents.json      project overrides
+
+| key | type | default | meaning |
+|---|---|---|---|
+| `maxConcurrent` | int 1–1024 | 4 | max concurrent background agents |
+| `defaultMaxTurns` | int 0–10000 | unlimited | default turn limit (`0` = unlimited) |
+| `graceTurns` | int 1–1000 | 5 | extra turns allowed after the soft limit |
+| `defaultJoinMode` | `async`\|`group`\|`smart` | `smart` | background notification batching (see Join modes) |
+| `transcriptRetentionDays` | int 0–3650 | unlimited | days to keep durable transcripts (`0` = temp-dir storage, no sweep) |
+
+Out-of-range or wrong-typed values are silently dropped and the field keeps its
+default.
+
+## Notes and limits
+
+- Children load extensions natively (pi parity), so subagents can spawn
+  subagents recursively — including this extension's own tools. There is no
+  depth limit; pass `isolated: true` on the `agent` tool to spawn a child
+  without extensions (core tools only, no further spawning), pi's `isolated`
+  param. Forks reject `isolated` — their tool pool must match the parent's.
+  Child sessions never fire `session_start`, so a child's extension instance
+  registers tools but starts no scheduler, UI, or retention sweep.
+- Live activity while a subagent works is the spinner + elapsed timer on its
+  tool row and the in-place view (see "Live activity").
+- `/reload` rebuilds extension state; background runs in flight at reload
+  time are orphaned.
+
+## Tests
+
+The tests need Tau's packages importable. The repo's own environment resolves
+`tau-ai` from PyPI:
+
+```bash
+uv run pytest
+```
+
+Borrowing a Tau checkout's environment also still works:
+
+```bash
+uv run --project /path/to/tau pytest /path/to/tau-subagents/tests
+```

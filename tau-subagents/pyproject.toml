@@ -1,0 +1,47 @@
+[build-system]
+requires = ["uv_build>=0.11.26,<0.12"]
+build-backend = "uv_build"
+
+[project]
+name = "tau-subagents"
+version = "0.2.0"
+description = "Subagents extension for Tau (a port of pi-subagents)."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Rian Dolphin", email = "dolphrian@gmail.com" }]
+requires-python = ">=3.12"
+classifiers = [
+ "Development Status :: 3 - Alpha",
+ "Intended Audience :: Developers",
+ "Operating System :: OS Independent",
+ "Programming Language :: Python :: 3",
+ "Programming Language :: Python :: 3.12",
+ "Programming Language :: Python :: 3.13",
+ "Programming Language :: Python :: 3.14",
+]
+keywords = ["tau", "subagents", "extension", "agents", "tui"]
+# textual is a direct dependency: the extension's agents strip and
+# conversation viewer are real Textual widgets mounted through tau's component
+# seam. The floor matches tau-ai 0.3.0's own textual requirement.
+dependencies = [
+ "tau-ai>=0.3.0",
+ "textual>=8.2.8",
+]
+
+[project.urls]
+Homepage = "https://github.com/rian-dolphin/tau-subagents"
+Repository = "https://github.com/rian-dolphin/tau-subagents"
+Issues = "https://github.com/rian-dolphin/tau-subagents/issues"
+
+[dependency-groups]
+dev = ["pytest>=8.0", "anyio>=4.0"]
+
+# Tau extension manifest (ported from pi's package.json "pi.extensions"):
+# lets `tau -e` on this repo root find the entry inside the src layout, no
+# root shim needed.
+[tool.tau]
+extensions = ["src/tau_subagents/extension.py"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

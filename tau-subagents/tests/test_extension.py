@@ -1,0 +1,2643 @@
+"""Tests for the tau-subagents extension.
+
+Requires Tau's packages on the import path. With this repo's own env
+(tau resolved via the pyproject path source): `uv run pytest`. Or borrow
+a Tau checkout's env: `uv run --project /path/to/tau pytest tests/`.
+"""
+
+import asyncio
+import json
+import subprocess
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from tau_agent.messages import AssistantMessage, TextContent, ToolCall, Usage, UserMessage
+from tau_ai import (
+    AssistantDoneEvent,
+    AssistantErrorEvent,
+    AssistantStartEvent,
+    FakeProvider,
+)
+from tau_coding import TauResourcePaths
+from tau_coding.extensions import ExtensionRuntime
+
+pytestmark = pytest.mark.anyio
+
+EXTENSION_DIR = Path(__file__).resolve().parent.parent / "src" / "tau_subagents"
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
+
+
+def _paths(tmp_path: Path) -> TauResourcePaths:
+    return TauResourcePaths(
+        root=tmp_path / "home-tau",
+        cwd=tmp_path / "project",
+        agents_root=tmp_path / "home-agents",
+    )
+
+
+class RecordingSession:
+    """Minimal BoundSession implementation for runtime tests."""
+
+    def __init__(self, tmp_path: Path, *, running: bool = False) -> None:
+        self.cwd = tmp_path
+        self.model = "fake"
+        self.provider_name = "fake"
+        self.session_id = "session-1"
+        self.system_prompt = "You are Tau."
+        self.is_running = running
+        self.steered: list[str] = []
+        self.followed_up: list[str] = []
+        self.custom_entries: list[tuple[str, dict[str, object]]] = []
+        self.messages: list[object] = []
+        self.followed_up_custom: list[
+            tuple[str | None, dict[str, object] | None]
+        ] = []
+
+    def queue_steering_message(
+        self,
+        content: str,
+        *,
+        custom_type: str | None = None,
+        details: dict[str, object] | None = None,
+    ) -> None:
+        del custom_type, details
+        self.steered.append(content)
+
+    def queue_follow_up_message(
+        self,
+        content: str,
+        *,
+        custom_type: str | None = None,
+        details: dict[str, object] | None = None,
+    ) -> None:
+        self.followed_up.append(content)
+        self.followed_up_custom.append((custom_type, details))
+
+    async def append_custom_entry(self, namespace: str, data: dict[str, object]) -> None:
+        self.custom_entries.append((namespace, data))
+
+
+def _load_runtime(tmp_path: Path) -> ExtensionRuntime:
+    runtime = ExtensionRuntime()
+    runtime.load(
+        _paths(tmp_path),
+        extra_paths=(EXTENSION_DIR,),
+        include_resource_dirs=False,
+    )
+    return runtime
+
+
+def _extension_module() -> object:
+    candidates = [
+        module
+        for module_name, module in sys.modules.items()
+        if module_name.startswith("tau_extension_tau_subagents")
+        and "." not in module_name
+    ]
+    assert candidates, "extension module not loaded"
+    return candidates[-1]
+
+
+def _patch_fake_provider(module: object, *, response: str) -> None:
+    module.load_provider_settings = lambda: None  # type: ignore[attr-defined]
+    module.resolve_provider_selection = (  # type: ignore[attr-defined]
+        lambda settings, provider_name=None, model=None: SimpleNamespace(
+            provider=SimpleNamespace(name="fake"),
+            model="fake",
+        )
+    )
+    module.create_model_provider = (  # type: ignore[attr-defined]
+        lambda provider, model, thinking_level: FakeProvider(
+            [
+                [
+                    AssistantStartEvent(partial=AssistantMessage(model="fake")),
+                    AssistantDoneEvent(reason="stop", message=AssistantMessage(content=response)),
+                ]
+            ]
+        )
+    )
+
+
+def _submodule(name: str) -> object:
+    top = _extension_module()
+    return sys.modules[f"{top.__name__}.{name}"]  # type: ignore[attr-defined]
+
+
+def _prompts_module() -> object:
+    return _submodule("prompts")
+
+
+def _init_git_repo(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    for args in (
+        ["init", "-q"],
+        ["config", "user.email", "test@example.com"],
+        ["config", "user.name", "Test"],
+    ):
+        subprocess.run(["git", *args], cwd=path, check=True)
+    (path / "README.md").write_text("hello\n")
+    subprocess.run(["git", "add", "-A"], cwd=path, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=path, check=True)
+
+
+def _git_stdout(args: list[str], cwd: Path) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=cwd, capture_output=True, text=True, check=True
+    ).stdout
+
+
+def _agent_tool(runtime: ExtensionRuntime):  # noqa: ANN202
+    return next(tool for tool in runtime.extension_tools if tool.name == "agent")
+
+
+def _steer_tool(runtime: ExtensionRuntime):  # noqa: ANN202
+    return next(tool for tool in runtime.extension_tools if tool.name == "steer_subagent")
+
+
+def _text_stream(text: str) -> list[object]:
+    return [
+        AssistantStartEvent(partial=AssistantMessage(model="fake")),
+        AssistantDoneEvent(reason="stop", message=AssistantMessage(content=text)),
+    ]
+
+
+def _tool_call_stream(text: str, call_id: str) -> list[object]:
+    return [
+        AssistantStartEvent(partial=AssistantMessage(model="fake")),
+        AssistantDoneEvent(
+            reason="toolUse",
+            message=AssistantMessage(
+                content=[TextContent(text=text), ToolCall(id=call_id, name="noop")],
+                stop_reason="toolUse",
+            ),
+        ),
+    ]
+
+
+class BlockingProvider:
+    """A provider whose single text response waits on an event before yielding."""
+
+    def __init__(self, release: asyncio.Event, text: str) -> None:
+        self._release = release
+        self._text = text
+        self.calls: list[object] = []
+
+    def stream_response(self, *, model, system, messages, tools, signal=None):  # noqa: ANN001, ANN202
+        self.calls.append(list(messages))
+
+        async def iterator():  # noqa: ANN202
+            await self._release.wait()
+            yield AssistantStartEvent(partial=AssistantMessage(model="fake"))
+            yield AssistantDoneEvent(reason="stop", message=AssistantMessage(content=self._text))
+
+        return iterator()
+
+
+def _patch_provider_settings(module: object) -> None:
+    module.load_provider_settings = lambda: None  # type: ignore[attr-defined]
+    module.resolve_provider_selection = (  # type: ignore[attr-defined]
+        lambda settings, provider_name=None, model=None: SimpleNamespace(
+            provider=SimpleNamespace(name="fake"), model="fake"
+        )
+    )
+
+
+def _patch_provider_factory(module: object, provider: object) -> None:
+    _patch_provider_settings(module)
+    module.create_model_provider = (  # type: ignore[attr-defined]
+        lambda provider_arg, model, thinking_level: provider
+    )
+
+
+def _patch_provider_sequence(module: object, providers: list[object]) -> None:
+    _patch_provider_settings(module)
+    it = iter(providers)
+    module.create_model_provider = (  # type: ignore[attr-defined]
+        lambda provider_arg, model, thinking_level: next(it)
+    )
+
+
+def _patch_recording_provider(
+    module: object, provider_instances: list[object]
+) -> tuple[list[object], list[object], list[object]]:
+    """Patch provider factories, recording provider, model, and thinking per spawn."""
+    provider_names: list[object] = []
+    models: list[object] = []
+    thinking_levels: list[object] = []
+    module.load_provider_settings = lambda: None  # type: ignore[attr-defined]
+
+    def fake_resolve(settings, provider_name=None, model=None):  # noqa: ANN001, ANN202
+        provider_names.append(provider_name)
+        models.append(model)
+        return SimpleNamespace(provider=SimpleNamespace(name="fake"), model="fake")
+
+    provider_iter = iter(provider_instances)
+
+    def fake_create(provider, model, thinking_level):  # noqa: ANN001, ANN202
+        thinking_levels.append(thinking_level)
+        return next(provider_iter)
+
+    module.resolve_provider_selection = fake_resolve  # type: ignore[attr-defined]
+    module.create_model_provider = fake_create  # type: ignore[attr-defined]
+    return provider_names, models, thinking_levels
+
+
+async def _wait_for(condition, *, tries: int = 500) -> None:  # noqa: ANN001
+    for _ in range(tries):
+        if condition():
+            return
+        await asyncio.sleep(0.01)
+
+
+async def test_settings_defaults_overrides_and_validation(tmp_path: Path) -> None:
+    _load_runtime(tmp_path)
+    module = _extension_module()
+    load = module.load_subagent_settings  # type: ignore[attr-defined]
+    Settings = module.SubagentSettings  # type: ignore[attr-defined]
+
+    home = tmp_path / "home"
+    cwd = tmp_path / "cwd"
+    defaults = load(cwd, home=home)
+    assert defaults == Settings()
+    assert defaults.max_concurrent == 4
+    assert defaults.default_max_turns is None
+    assert defaults.grace_turns == 5
+    assert defaults.default_join_mode == "smart"
+    assert defaults.transcript_retention_days is None  # unlimited retention
+
+    # transcriptRetentionDays: 0 (opt out) is in range; negatives are dropped.
+    (cwd / ".tau").mkdir(parents=True)
+    (cwd / ".tau" / "subagents.json").write_text('{"transcriptRetentionDays": 0}')
+    assert load(cwd, home=home).transcript_retention_days == 0
+    (cwd / ".tau" / "subagents.json").write_text('{"transcriptRetentionDays": -1}')
+    assert load(cwd, home=home).transcript_retention_days is None
+    (cwd / ".tau" / "subagents.json").write_text('{}')
+
+    (home / ".tau").mkdir(parents=True)
+    (home / ".tau" / "subagents.json").write_text(
+        '{"maxConcurrent": 8, "graceTurns": 9, "defaultJoinMode": "group"}'
+    )
+    (cwd / ".tau" / "subagents.json").write_text('{"maxConcurrent": 2}')
+    merged = load(cwd, home=home)
+    assert merged.max_concurrent == 2  # project overrides global
+    assert merged.grace_turns == 9  # inherited from global
+    assert merged.default_join_mode == "group"
+
+    # Project sets an out-of-range int (dropped) but leaves graceTurns unset.
+    (cwd / ".tau" / "subagents.json").write_text(
+        '{"maxConcurrent": 0, "defaultMaxTurns": 0}'
+    )
+    invalid = load(cwd, home=home)
+    assert invalid.max_concurrent == 4  # 0 out of range dropped => default
+    assert invalid.grace_turns == 9  # untouched, global value kept
+    assert invalid.default_max_turns is None  # 0 => unlimited
+    assert invalid.default_join_mode == "group"  # untouched global value kept
+
+    # A wrong-typed value shadows the global and falls back to the default.
+    (cwd / ".tau" / "subagents.json").write_text('{"graceTurns": "x"}')
+    assert load(cwd, home=home).grace_turns == 5
+
+    # A boolean is not a valid int even though bool subclasses int; the
+    # shadowed global is dropped too, so the field falls back to its default.
+    (cwd / ".tau" / "subagents.json").write_text('{"maxConcurrent": true}')
+    assert load(cwd, home=home).max_concurrent == 4
+
+    # Malformed project JSON is treated as empty, so only the global applies.
+    (cwd / ".tau" / "subagents.json").write_text("not json {")
+    assert load(cwd, home=home).max_concurrent == 8
+
+
+async def test_background_queue_limits_concurrency(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    session = RecordingSession(tmp_path)
+    runtime.bind(session)
+    module = _extension_module()
+    module.load_subagent_settings = (  # type: ignore[attr-defined]
+        lambda cwd, home=None: module.SubagentSettings(
+            max_concurrent=1, default_join_mode="async"
+        )
+    )
+    release = asyncio.Event()
+    _patch_provider_sequence(
+        module,
+        [
+            BlockingProvider(release, "First done"),
+            FakeProvider([_text_stream("Second done")]),
+        ],
+    )
+
+    agent_tool = _agent_tool(runtime)
+    first = await agent_tool.execute(
+        "call-1",
+        {"prompt": "one", "description": "one", "run_in_background": True}
+    )
+    second = await agent_tool.execute(
+        "call-1",
+        {"prompt": "two", "description": "two", "run_in_background": True}
+    )
+    assert "Agent started in background." in first.text
+    assert "Agent queued in background." in second.text
+    assert "Position: queued (max 1 concurrent)" in second.text
+
+    release.set()
+    await _wait_for(lambda: len(session.followed_up) >= 2)
+    assert len(session.followed_up) == 2
+    assert all("<status>completed</status>" in note for note in session.followed_up)
+
+
+async def test_steer_unknown_and_completed(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(RecordingSession(tmp_path))
+    module = _extension_module()
+    _patch_provider_factory(module, FakeProvider([_text_stream("done")]))
+
+    steer_tool = _steer_tool(runtime)
+    unknown = await steer_tool.execute("call-1", {"agent_id": "nope", "message": "hi"})
+    assert 'Agent not found: "nope". It may have been cleaned up.' in unknown.text
+
+    agent_tool = _agent_tool(runtime)
+    await agent_tool.execute("call-1", {"prompt": "x", "description": "x"})
+    completed = await steer_tool.execute("call-1", {"agent_id": "agent-1", "message": "hi"})
+    assert 'is not running (status: completed)' in completed.text
+
+
+async def test_steer_queued_run_is_delivered_after_drain(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    session = RecordingSession(tmp_path)
+    runtime.bind(session)
+    module = _extension_module()
+    module.load_subagent_settings = (  # type: ignore[attr-defined]
+        lambda cwd, home=None: module.SubagentSettings(
+            max_concurrent=1, default_join_mode="async"
+        )
+    )
+    release = asyncio.Event()
+    queued_provider = FakeProvider([_text_stream("first"), _text_stream("second")])
+    _patch_provider_sequence(
+        module, [BlockingProvider(release, "First done"), queued_provider]
+    )
+
+    agent_tool = _agent_tool(runtime)
+    await agent_tool.execute(
+        "call-1",
+        {"prompt": "one", "description": "one", "run_in_background": True}
+    )
+    await agent_tool.execute(
+        "call-1",
+        {"prompt": "two", "description": "two", "run_in_background": True}
+    )
+
+    steer_tool = _steer_tool(runtime)
+    steered = await steer_tool.execute("call-1", {"agent_id": "agent-2", "message": "go faster"})
+    assert "Steering message queued for agent agent-2" in steered.text
+
+    release.set()
+    await _wait_for(lambda: len(session.followed_up) >= 2)
+    # The steer was queued before the drained run started, so the loop drains
+    # it into the FIRST turn's context (pi loop semantics) rather than
+    # triggering an extra provider call.
+    assert queued_provider.calls
+    assert any(
+        getattr(m, "role", None) == "user" and m.text == "go faster"
+        for m in queued_provider.calls[0][2]
+    )
+
+
+async def test_get_result_reports_queued_and_wait_follows_drain(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    session = RecordingSession(tmp_path)
+    runtime.bind(session)
+    module = _extension_module()
+    module.load_subagent_settings = (  # type: ignore[attr-defined]
+        lambda cwd, home=None: module.SubagentSettings(
+            max_concurrent=1, default_join_mode="async"
+        )
+    )
+    release = asyncio.Event()
+    _patch_provider_sequence(
+        module,
+        [
+            BlockingProvider(release, "First done"),
+            FakeProvider([_text_stream("Second done")]),
+        ],
+    )
+
+    agent_tool = _agent_tool(runtime)
+    get_result = next(
+        tool for tool in runtime.extension_tools if tool.name == "get_subagent_result"
+    )
+    await agent_tool.execute(
+        "call-1",
+        {"prompt": "one", "description": "one", "run_in_background": True}
+    )
+    await agent_tool.execute(
+        "call-1",
+        {"prompt": "two", "description": "two", "run_in_background": True}
+    )
+
+    queued = await get_result.execute("call-1", {"agent_id": "agent-2"})
+    assert "[queued]" in queued.text
+    assert "Still queued (max 1 concurrent)." in queued.text
+
+    # wait=true follows the run through queued -> started -> finished.
+    waiter = asyncio.create_task(
+        get_result.execute("call-1", {"agent_id": "agent-2", "wait": True})
+    )
+    await asyncio.sleep(0.02)
+    release.set()
+    waited = await waiter
+    assert "[completed]" in waited.text
+    assert "Second done" in waited.text
+
+    # The queued check did not consume agent-2's result (the wait did), so
+    # only agent-1's completion notification is delivered.
+    await _wait_for(lambda: any("agent-1" in note for note in session.followed_up))
+    await asyncio.sleep(0.05)
+    assert all("agent-1" in note for note in session.followed_up)
+
+
+async def test_max_turns_soft_limit_wraps_up(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(RecordingSession(tmp_path))
+    module = _extension_module()
+    provider = FakeProvider([_tool_call_stream("working", "t1"), _text_stream("Final answer")])
+    _patch_provider_factory(module, provider)
+
+    agent_tool = _agent_tool(runtime)
+    result = await agent_tool.execute(
+        "call-1",
+        {"prompt": "go", "description": "go", "max_turns": 1}
+    )
+    assert "[steered]" in result.text
+    assert "Final answer" in result.text
+    soft_message = module.SOFT_LIMIT_MESSAGE  # type: ignore[attr-defined]
+    # Messages carry timestamps now, so compare by role + text.
+    assert any(
+        getattr(m, "role", None) == "user" and m.text == soft_message
+        for m in provider.calls[1][2]
+    )
+
+
+async def test_max_turns_grace_abort(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(RecordingSession(tmp_path))
+    module = _extension_module()
+    module.load_subagent_settings = (  # type: ignore[attr-defined]
+        lambda cwd, home=None: module.SubagentSettings(grace_turns=1)
+    )
+    # More responses than the abort point allows: the run must stop early.
+    provider = FakeProvider(
+        [_tool_call_stream(f"t{i}", f"c{i}") for i in range(6)]
+    )
+    _patch_provider_factory(module, provider)
+
+    agent_tool = _agent_tool(runtime)
+    result = await agent_tool.execute(
+        "call-1",
+        {"prompt": "loop", "description": "loop", "max_turns": 1}
+    )
+    assert "[aborted]" in result.text
+    # Soft limit at turn 1, grace of 1 => hard cancel right after turn 2. The
+    # pi loop then surfaces the cancellation as one final synthetic error turn
+    # ("Provider produced no assistant message"), so the counter reads 3 —
+    # still far below the 6 turns the provider offered.
+    assert "turns=3" in result.text
+    # Two real provider calls, plus the post-cancel call the provider answers
+    # with an empty (cancelled) stream.
+    assert len(provider.calls) == 3
+
+
+async def test_resume_continues_session(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(RecordingSession(tmp_path))
+    module = _extension_module()
+    provider = FakeProvider([_text_stream("First response"), _text_stream("Second response")])
+    _patch_provider_factory(module, provider)
+
+    agent_tool = _agent_tool(runtime)
+    first = await agent_tool.execute("call-1", {"prompt": "start", "description": "start"})
+    assert "First response" in first.text
+
+    resumed = await agent_tool.execute("call-1", {"resume": "agent-1", "prompt": "keep going"})
+    assert "Second response" in resumed.text
+    assert "turns=2" in resumed.text
+
+    unknown = await agent_tool.execute("call-1", {"resume": "ghost", "prompt": "x"})
+    assert 'Agent not found: "ghost". It may have been cleaned up.' in unknown.text
+
+
+async def test_group_join_full_delivery(tmp_path: Path) -> None:
+    _load_runtime(tmp_path)
+    module = _extension_module()
+    delivered: list[tuple[list[object], bool]] = []
+    join = module.GroupJoinManager(  # type: ignore[attr-defined]
+        lambda records, partial: delivered.append((list(records), partial)),
+        group_timeout=5.0,
+        straggler_timeout=5.0,
+    )
+    first = SimpleNamespace(agent_id="a", result_consumed=False)
+    second = SimpleNamespace(agent_id="b", result_consumed=False)
+    loner = SimpleNamespace(agent_id="x", result_consumed=False)
+
+    join.register_group("g1", ["a", "b"])
+    assert join.on_agent_complete(loner) == "pass"
+    assert join.on_agent_complete(first) == "held"
+    assert join.on_agent_complete(second) == "delivered"
+    assert delivered == [([first, second], False)]
+    join.cancel_all()
+
+
+async def test_group_join_timeout_partial_then_straggler(tmp_path: Path) -> None:
+    _load_runtime(tmp_path)
+    module = _extension_module()
+    delivered: list[tuple[list[object], bool]] = []
+    join = module.GroupJoinManager(  # type: ignore[attr-defined]
+        lambda records, partial: delivered.append((list(records), partial)),
+        group_timeout=0.05,
+        straggler_timeout=0.02,
+    )
+    first = SimpleNamespace(agent_id="a", result_consumed=False)
+    second = SimpleNamespace(agent_id="b", result_consumed=False)
+
+    join.register_group("g1", ["a", "b"])
+    assert join.on_agent_complete(first) == "held"
+    await asyncio.sleep(0.1)
+    assert delivered == [([first], True)]
+
+    # The remaining member is now a straggler group with its own timeout.
+    assert join.on_agent_complete(second) == "delivered"
+    assert delivered[1] == ([second], False)
+    join.cancel_all()
+
+
+async def test_group_join_skips_consumed_members(tmp_path: Path) -> None:
+    _load_runtime(tmp_path)
+    module = _extension_module()
+    delivered: list[tuple[list[object], bool]] = []
+    join = module.GroupJoinManager(  # type: ignore[attr-defined]
+        lambda records, partial: delivered.append((list(records), partial)),
+        group_timeout=5.0,
+        straggler_timeout=5.0,
+    )
+    consumed = SimpleNamespace(agent_id="a", result_consumed=True)
+    fresh = SimpleNamespace(agent_id="b", result_consumed=False)
+    join.register_group("g1", ["a", "b"])
+    join.on_agent_complete(consumed)
+    assert join.on_agent_complete(fresh) == "delivered"
+    assert delivered == [([fresh], False)]
+
+    both_consumed = [
+        SimpleNamespace(agent_id="c", result_consumed=True),
+        SimpleNamespace(agent_id="d", result_consumed=True),
+    ]
+    join.register_group("g2", ["c", "d"])
+    for record in both_consumed:
+        join.on_agent_complete(record)
+    assert len(delivered) == 1  # all-consumed delivery is suppressed
+    join.cancel_all()
+
+
+async def test_smart_mode_consolidates_two_background_agents(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    session = RecordingSession(tmp_path)
+    runtime.bind(session)
+    module = _extension_module()
+    _patch_provider_sequence(
+        module,
+        [
+            FakeProvider([_text_stream("First done")]),
+            FakeProvider([_text_stream("Second done")]),
+        ],
+    )
+
+    agent_tool = _agent_tool(runtime)
+    await agent_tool.execute(
+        "call-1",
+        {"prompt": "one", "description": "one", "run_in_background": True}
+    )
+    await agent_tool.execute(
+        "call-1",
+        {"prompt": "two", "description": "two", "run_in_background": True}
+    )
+
+    await _wait_for(lambda: session.followed_up)
+    await asyncio.sleep(0.2)
+    assert len(session.followed_up) == 1
+    note = session.followed_up[0]
+    assert "Background agent group completed: 2 agent(s) finished" in note
+    assert "(partial" not in note
+    assert "<agent-id>agent-1</agent-id>" in note
+    assert "<agent-id>agent-2</agent-id>" in note
+    assert "Use get_subagent_result for full output." in note
+
+
+async def test_async_mode_sends_individual_notifications(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    session = RecordingSession(tmp_path)
+    runtime.bind(session)
+    module = _extension_module()
+    module.load_subagent_settings = (  # type: ignore[attr-defined]
+        lambda cwd, home=None: module.SubagentSettings(default_join_mode="async")
+    )
+    _patch_provider_sequence(
+        module,
+        [
+            FakeProvider([_text_stream("First done")]),
+            FakeProvider([_text_stream("Second done")]),
+        ],
+    )
+
+    agent_tool = _agent_tool(runtime)
+    await agent_tool.execute(
+        "call-1",
+        {"prompt": "one", "description": "one", "run_in_background": True}
+    )
+    await agent_tool.execute(
+        "call-1",
+        {"prompt": "two", "description": "two", "run_in_background": True}
+    )
+
+    await _wait_for(lambda: len(session.followed_up) >= 2)
+    await asyncio.sleep(0.2)
+    assert len(session.followed_up) == 2
+    assert all("<task-notification>" in note for note in session.followed_up)
+    assert not any("agent group completed" in note for note in session.followed_up)
+
+
+async def test_smart_mode_partial_delivery_then_straggler(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = _load_runtime(tmp_path)
+    session = RecordingSession(tmp_path)
+    runtime.bind(session)
+    module = _extension_module()
+    monkeypatch.setattr(module, "GROUP_TIMEOUT_SECONDS", 0.15)
+    monkeypatch.setattr(module, "STRAGGLER_TIMEOUT_SECONDS", 0.05)
+    release = asyncio.Event()
+    _patch_provider_sequence(
+        module,
+        [
+            BlockingProvider(release, "Slow done"),
+            FakeProvider([_text_stream("Fast done")]),
+        ],
+    )
+
+    agent_tool = _agent_tool(runtime)
+    await agent_tool.execute(
+        "call-1",
+        {"prompt": "slow", "description": "slow", "run_in_background": True}
+    )
+    await agent_tool.execute(
+        "call-1",
+        {"prompt": "fast", "description": "fast", "run_in_background": True}
+    )
+
+    await _wait_for(lambda: session.followed_up)
+    partial_note = session.followed_up[0]
+    assert "1 agent(s) finished (partial — others still running)" in partial_note
+    assert "<agent-id>agent-2</agent-id>" in partial_note
+
+    release.set()
+    await _wait_for(lambda: len(session.followed_up) >= 2)
+    straggler_note = session.followed_up[1]
+    assert "1 agent(s) finished" in straggler_note
+    assert "(partial" not in straggler_note
+    assert "<agent-id>agent-1</agent-id>" in straggler_note
+
+
+async def test_build_child_system_prompt_append_mode(tmp_path: Path) -> None:
+    _load_runtime(tmp_path)
+    module = _extension_module()
+    prompts = _prompts_module()
+    definition = module.AgentDefinition(  # type: ignore[attr-defined]
+        name="helper",
+        description="d",
+        system_prompt="Do things.",
+        prompt_mode="append",
+    )
+
+    environment = await prompts.detect_environment(tmp_path)  # type: ignore[attr-defined]
+    assert environment == (
+        "# Environment\n"
+        f"Working directory: {tmp_path}\n"
+        "Not a git repository\n"
+        f"Platform: {sys.platform}"
+    )
+
+    prompt = module.build_child_system_prompt(  # type: ignore[attr-defined]
+        definition,
+        parent_prompt="PARENT PROMPT.",
+        environment=environment,
+        skill_blocks=[("foo", "FOO BLOCK")],
+    )
+
+    expected_prefix = (
+        "PARENT PROMPT.\n\n"
+        f"{prompts.SUB_AGENT_BRIDGE}\n\n"  # type: ignore[attr-defined]
+        '<active_agent name="helper"/>\n\n'
+        f"{environment}"
+    )
+    assert prompt.startswith(expected_prefix)
+    assert "<agent_instructions>\nDo things.\n</agent_instructions>" in prompt
+    # pi's extras suffix layout: three newlines before the first skill header.
+    assert prompt.endswith("\n\n\n# Preloaded Skill: foo\nFOO BLOCK")
+
+    # Without a body there is no <agent_instructions> section.
+    bodyless = module.AgentDefinition(  # type: ignore[attr-defined]
+        name="helper", description="d", prompt_mode="append"
+    )
+    prompt = module.build_child_system_prompt(  # type: ignore[attr-defined]
+        bodyless, parent_prompt="PARENT.", environment="ENV", skill_blocks=[]
+    )
+    assert "<agent_instructions>" not in prompt
+
+    # Without a parent prompt, append mode falls back to replace assembly.
+    fallback = module.build_child_system_prompt(  # type: ignore[attr-defined]
+        definition, parent_prompt=None, environment="", skill_blocks=[]
+    )
+    assert fallback == "Do things."
+
+
+async def test_build_child_system_prompt_replace_mode(tmp_path: Path) -> None:
+    _load_runtime(tmp_path)
+    module = _extension_module()
+    definition = module.AgentDefinition(  # type: ignore[attr-defined]
+        name="helper", description="d", system_prompt="Body."
+    )
+
+    with_skills = module.build_child_system_prompt(  # type: ignore[attr-defined]
+        definition,
+        parent_prompt="PARENT.",
+        environment="",
+        skill_blocks=[("foo", "FOO BLOCK")],
+    )
+    assert with_skills == "Body.\n\n# Preloaded Skill: foo\nFOO BLOCK"
+
+    plain = module.AgentDefinition(name="helper", description="d")  # type: ignore[attr-defined]
+    assert (
+        module.build_child_system_prompt(  # type: ignore[attr-defined]
+            plain, parent_prompt="PARENT.", environment="", skill_blocks=[]
+        )
+        is None
+    )
+
+
+async def test_resolve_skill_blocks(tmp_path: Path) -> None:
+    _load_runtime(tmp_path)
+    module = _extension_module()
+    cwd = tmp_path / "proj"
+    (cwd / ".tau" / "skills" / "foo").mkdir(parents=True)
+    (cwd / ".tau" / "skills" / "foo" / "SKILL.md").write_text(
+        "---\ndescription: Foo skill\n---\nAlways foo."
+    )
+    home = tmp_path / "empty-home"
+
+    blocks = module.resolve_skill_blocks(("foo", "missing"), cwd, home)  # type: ignore[attr-defined]
+
+    assert blocks[0][0] == "foo"
+    assert '<skill name="foo"' in blocks[0][1]
+    assert "Always foo." in blocks[0][1]
+    assert blocks[1] == ("missing", '(Skill "missing" not found)')
+
+
+async def test_spawn_injects_skills_and_append_prompt(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(RecordingSession(tmp_path))
+    module = _extension_module()
+    (tmp_path / ".tau" / "skills" / "myskill").mkdir(parents=True)
+    (tmp_path / ".tau" / "skills" / "myskill" / "SKILL.md").write_text("Skill body here.")
+    (tmp_path / ".tau" / "agents").mkdir(parents=True)
+    (tmp_path / ".tau" / "agents" / "skilled.md").write_text(
+        "---\n"
+        "description: Skilled agent\n"
+        "skills: myskill\n"
+        "prompt_mode: append\n"
+        "---\n"
+        "Use the skill."
+    )
+    provider = FakeProvider([_text_stream("done")])
+    _patch_provider_factory(module, provider)
+
+    agent_tool = _agent_tool(runtime)
+    result = await agent_tool.execute(
+        "call-1",
+        {"prompt": "go", "description": "go", "subagent_type": "skilled"}
+    )
+    system = provider.calls[0][1]
+    assert system.startswith("You are Tau.\n\n<sub_agent_context>")
+    assert "<agent_instructions>\nUse the skill.\n</agent_instructions>" in system
+    assert "# Preloaded Skill: myskill" in system
+    assert '<skill name="myskill"' in system
+    assert "Skill body here." in system
+
+
+async def test_worktree_create_and_cleanup_dirty(tmp_path: Path) -> None:
+    _load_runtime(tmp_path)
+    worktree_mod = _submodule("worktree")
+    repo = tmp_path / "repo"
+    _init_git_repo(repo)
+
+    worktree = await worktree_mod.create_worktree(repo, "t1")  # type: ignore[attr-defined]
+    assert worktree is not None
+    assert worktree.branch == "tau-agent-t1"
+    assert worktree.work_path.exists()
+    assert worktree.repo == repo.resolve()
+
+    (worktree.path / "new.txt").write_text("dirty\n")
+    result = await worktree_mod.cleanup_worktree(worktree, "my task")  # type: ignore[attr-defined]
+
+    assert result.has_changes is True
+    assert result.branch == "tau-agent-t1"
+    assert not worktree.path.exists()
+    assert "tau-agent-t1" in _git_stdout(["branch", "--list", "tau-agent-t1"], repo)
+    message = _git_stdout(["log", "-1", "--format=%s", "tau-agent-t1"], repo)
+    assert message.strip() == "tau-agent: my task"
+
+
+async def test_worktree_cleanup_clean_removes_without_branch(tmp_path: Path) -> None:
+    _load_runtime(tmp_path)
+    worktree_mod = _submodule("worktree")
+    repo = tmp_path / "repo"
+    _init_git_repo(repo)
+
+    worktree = await worktree_mod.create_worktree(repo, "t2")  # type: ignore[attr-defined]
+    assert worktree is not None
+    result = await worktree_mod.cleanup_worktree(worktree, "task")  # type: ignore[attr-defined]
+
+    assert result.has_changes is False
+    assert not worktree.path.exists()
+    assert _git_stdout(["branch", "--list", "tau-agent-t2"], repo).strip() == ""
+
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    assert await worktree_mod.create_worktree(plain, "t3") is None  # type: ignore[attr-defined]
+
+
+async def test_worktree_spawn_fails_in_non_git_cwd(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(RecordingSession(tmp_path))
+    module = _extension_module()
+    _patch_provider_factory(module, FakeProvider([_text_stream("unused")]))
+
+    agent_tool = _agent_tool(runtime)
+    result = await agent_tool.execute(
+        "call-1",
+        {"prompt": "x", "description": "x", "isolation": "worktree"}
+    )
+    assert 'Cannot run with isolation: "worktree"' in result.text
+    assert "Initialize git and commit at least once, or omit isolation." in result.text
+
+
+async def test_worktree_isolation_runs_child_in_worktree(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    repo = tmp_path / "repo"
+    _init_git_repo(repo)
+    runtime.bind(RecordingSession(repo))
+    module = _extension_module()
+    provider = FakeProvider(
+        [
+            [
+                AssistantStartEvent(partial=AssistantMessage(model="fake")),
+                AssistantDoneEvent(
+                    reason="toolUse",
+                    message=AssistantMessage(
+                        content=[
+                            TextContent(text="checking"),
+                            ToolCall(id="c1", name="bash", arguments={"command": "pwd"}),
+                        ],
+                        stop_reason="toolUse",
+                    ),
+                ),
+            ],
+            _text_stream("done"),
+        ]
+    )
+    _patch_provider_factory(module, provider)
+
+    agent_tool = _agent_tool(runtime)
+    result = await agent_tool.execute(
+        "call-1",
+        {"prompt": "where am I", "description": "where", "isolation": "worktree"}
+    )
+    assert "tau-agent-agent-1" in str(provider.calls[1][2])  # pwd ran in the worktree
+    assert "tau-agent" not in _git_stdout(["worktree", "list"], repo)
+    assert _git_stdout(["branch", "--list", "tau-agent-agent-1"], repo).strip() == ""
+
+
+async def test_background_worktree_failure_delivers_error_notification(
+    tmp_path: Path,
+) -> None:
+    runtime = _load_runtime(tmp_path)
+    session = RecordingSession(tmp_path)  # not a git repo
+    runtime.bind(session)
+    module = _extension_module()
+    _patch_provider_factory(module, FakeProvider([_text_stream("unused")]))
+
+    agent_tool = _agent_tool(runtime)
+    spawn_result = await agent_tool.execute(
+        "call-1",
+        {
+            "prompt": "x",
+            "description": "x",
+            "isolation": "worktree",
+            "run_in_background": True,
+        }
+    )
+    assert "Agent started in background." in spawn_result.text
+
+    await _wait_for(lambda: session.followed_up)
+    note = session.followed_up[0]
+    assert "<status>error</status>" in note
+    assert 'Cannot run with isolation: "worktree"' in note
+
+
+async def test_resume_blocked_for_worktree_agents(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    repo = tmp_path / "repo"
+    _init_git_repo(repo)
+    runtime.bind(RecordingSession(repo))
+    module = _extension_module()
+    _patch_provider_factory(module, FakeProvider([_text_stream("done")]))
+
+    agent_tool = _agent_tool(runtime)
+    first = await agent_tool.execute(
+        "call-1",
+        {"prompt": "x", "description": "x", "isolation": "worktree"}
+    )
+
+    resumed = await agent_tool.execute("call-1", {"resume": "agent-1", "prompt": "more"})
+    assert (
+        'Agent "agent-1" ran in an isolated worktree that has been cleaned up;'
+        " resume is not supported for worktree agents." in resumed.text
+    )
+
+
+async def test_worktree_error_run_surfaces_branch_annotation(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    repo = tmp_path / "repo"
+    _init_git_repo(repo)
+    runtime.bind(RecordingSession(repo))
+    module = _extension_module()
+    provider = FakeProvider(
+        [
+            [
+                AssistantStartEvent(partial=AssistantMessage(model="fake")),
+                AssistantDoneEvent(
+                    reason="toolUse",
+                    message=AssistantMessage(
+                        content=[
+                            TextContent(text="working"),
+                            ToolCall(
+                                id="c1",
+                                name="bash",
+                                arguments={"command": "echo dirty > newfile.txt"},
+                            ),
+                        ],
+                        stop_reason="toolUse",
+                    ),
+                ),
+            ],
+            [
+                AssistantStartEvent(partial=AssistantMessage(model="fake")),
+                AssistantErrorEvent(
+                    reason="error",
+                    error=AssistantMessage(
+                        model="fake", stop_reason="error", error_message="boom"
+                    ),
+                ),
+            ],
+        ]
+    )
+    _patch_provider_factory(module, provider)
+
+    agent_tool = _agent_tool(runtime)
+    result = await agent_tool.execute(
+        "call-1",
+        {"prompt": "break", "description": "break", "isolation": "worktree"}
+    )
+    assert "boom" in result.text
+    assert "Changes saved to branch `tau-agent-agent-1`" in result.text
+    assert "tau-agent-agent-1" in _git_stdout(
+        ["branch", "--list", "tau-agent-agent-1"], repo
+    )
+
+    get_result = next(
+        tool for tool in runtime.extension_tools if tool.name == "get_subagent_result"
+    )
+    fetched = await get_result.execute("call-1", {"agent_id": "agent-1"})
+    assert "Changes saved to branch `tau-agent-agent-1`" in fetched.text
+
+
+async def test_recovered_error_does_not_mark_run_failed() -> None:
+    # There is no error event in the pi protocol: errors are assistant
+    # messages with stop_reason "error", and tau can recover from a mid-run
+    # overflow error via compaction + auto-retry INSIDE one prompt() stream.
+    # The verdict must therefore be taken only at stream end: a later
+    # successful assistant message clears the pending error.
+    from tau_agent.events import MessageEndEvent
+
+    from tau_subagents.extension import AgentRun, SubagentManager
+
+    manager = SubagentManager(api=SimpleNamespace())
+    run = AgentRun(
+        agent_id="agent-1",
+        agent_type="general",
+        description="d",
+        prompt="p",
+        background=False,
+    )
+    final_text: list[str] = []
+
+    error_message = AssistantMessage(
+        model="fake", stop_reason="error", error_message="context overflow"
+    )
+    manager._observe(run, MessageEndEvent(message=error_message), final_text)
+    assert run.pending_error == "context overflow"
+
+    recovered = AssistantMessage(content="recovered fine")
+    manager._observe(run, MessageEndEvent(message=recovered), final_text)
+    assert run.pending_error is None
+
+    manager._finalize_status(run)
+    assert run.status == "completed"
+    assert run.error is None
+    assert final_text == ["recovered fine"]
+
+    # Without the recovery, the pending error becomes the terminal status.
+    failed = AgentRun(
+        agent_id="agent-2",
+        agent_type="general",
+        description="d",
+        prompt="p",
+        background=False,
+    )
+    manager._observe(failed, MessageEndEvent(message=error_message), [])
+    manager._finalize_status(failed)
+    assert failed.status == "error"
+    assert failed.error == "context overflow"
+
+
+async def test_output_file_streams_transcript(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    session = RecordingSession(tmp_path)
+    runtime.bind(session)
+    module = _extension_module()
+    _patch_provider_factory(module, FakeProvider([_text_stream("Answer text")]))
+
+    agent_tool = _agent_tool(runtime)
+    spawn_result = await agent_tool.execute(
+        "call-1",
+        {"prompt": "Long task", "description": "long", "run_in_background": True}
+    )
+    output_line = next(
+        line for line in spawn_result.text.splitlines()
+        if line.startswith("Output file: ")
+    )
+    output_path = Path(output_line.removeprefix("Output file: "))
+    # Durable location (ADR 0003): under the transcript root (redirected to
+    # tmp_path by the autouse conftest fixture), not the system temp dir.
+    assert str(output_path).startswith(str(tmp_path / "subagents-transcripts"))
+    assert output_path.parent.name == "tasks"
+    assert output_path.name == "agent-1.jsonl"
+    output_mod = _submodule("output_file")
+    assert output_mod.encode_cwd("/") == "root"  # type: ignore[attr-defined]
+
+    await _wait_for(lambda: session.followed_up)
+    note = session.followed_up[0]
+    assert f"<output-file>{output_path}</output-file>" in note
+    # The transcript path appears exactly once (the old duplicate
+    # "Full transcript available at:" footer was dropped).
+    assert note.count(str(output_path)) == 1
+
+    entries = [
+        json.loads(line) for line in output_path.read_text().splitlines() if line
+    ]
+    assert entries[0]["type"] == "user"
+    assert entries[0]["isSidechain"] is True
+    assert entries[0]["message"]["content"] == "Long task"
+    assert entries[0]["cwd"] == str(tmp_path)
+    assert any(
+        entry["type"] == "assistant" and "Answer text" in json.dumps(entry["message"])
+        for entry in entries[1:]
+    )
+
+    get_result = next(
+        tool for tool in runtime.extension_tools if tool.name == "get_subagent_result"
+    )
+    fetched = await get_result.execute("call-1", {"agent_id": "agent-1"})
+    assert f"Output file: {output_path}" in fetched.text
+
+
+async def test_retention_zero_uses_temp_directory(tmp_path: Path) -> None:
+    # transcriptRetentionDays: 0 opts out of durable storage (ADR 0003) and
+    # keeps the old per-uid location in the system temp directory.
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(RecordingSession(tmp_path))
+    module = _extension_module()
+    (tmp_path / ".tau").mkdir(exist_ok=True)
+    (tmp_path / ".tau" / "subagents.json").write_text(
+        '{"transcriptRetentionDays": 0}'
+    )
+    _patch_provider_factory(module, FakeProvider([_text_stream("done")]))
+
+    result = await _agent_tool(runtime).execute(
+        "call-1", {"prompt": "p", "description": "d"}
+    )
+    import tempfile
+
+    output_file = str(result.details["output_file"])
+    assert output_file.startswith(tempfile.gettempdir())
+    assert "tau-subagents-" in output_file
+
+
+def test_sweep_transcripts_deletes_old_and_prunes(tmp_path: Path) -> None:
+    import os
+    import time
+
+    from tau_subagents.output_file import sweep_transcripts, transcripts_root
+
+    root = transcripts_root()  # redirected to tmp_path by the conftest fixture
+    assert str(root).startswith(str(tmp_path))
+    old_dir = root / "proj-aaaaaa" / "session-old" / "tasks"
+    new_dir = root / "proj-aaaaaa" / "session-new" / "tasks"
+    old_dir.mkdir(parents=True)
+    new_dir.mkdir(parents=True)
+    old_file = old_dir / "agent-1.jsonl"
+    new_file = new_dir / "agent-2.jsonl"
+    old_file.write_text("{}\n")
+    new_file.write_text("{}\n")
+    stale = time.time() - 15 * 86_400
+    os.utime(old_file, (stale, stale))
+
+    assert sweep_transcripts(14) == 1
+    assert not old_file.exists()
+    assert new_file.exists()
+    # Emptied ancestors are pruned; populated ones and the root survive.
+    assert not old_dir.exists()
+    assert not (root / "proj-aaaaaa" / "session-old").exists()
+    assert new_dir.exists()
+    assert root.exists()
+
+    # Retention 0 never deletes anything.
+    os.utime(new_file, (stale, stale))
+    assert sweep_transcripts(0) == 0
+    assert new_file.exists()
+
+
+async def test_memory_dir_layout_and_validation(tmp_path: Path) -> None:
+    _load_runtime(tmp_path)
+    memory = _submodule("memory")
+    home = tmp_path / "home"
+    cwd = tmp_path / "proj"
+
+    resolve = memory.resolve_memory_dir  # type: ignore[attr-defined]
+    assert resolve("user", "helper", cwd, home) == home / ".tau" / "agent-memory" / "helper"
+    assert resolve("project", "helper", cwd, home) == cwd / ".tau" / "agent-memory" / "helper"
+    assert (
+        resolve("local", "helper", cwd, home)
+        == cwd / ".tau" / "agent-memory-local" / "helper"
+    )
+    assert resolve("global", "helper", cwd, home) is None
+    assert resolve("user", "../evil", cwd, home) is None
+    assert resolve("user", ".hidden", cwd, home) is None
+    assert resolve("user", "a" * 129, cwd, home) is None
+
+
+async def test_memory_block_builders(tmp_path: Path) -> None:
+    _load_runtime(tmp_path)
+    memory = _submodule("memory")
+    memory_dir = tmp_path / "mem"
+
+    empty = memory.build_memory_block(memory_dir, "project", None)  # type: ignore[attr-defined]
+    assert empty.startswith("# Agent Memory\n\n")
+    assert "Memory scope: project" in empty
+    assert f"No MEMORY.md exists yet. Create one at {memory_dir}/MEMORY.md" in empty
+    assert "MEMORY.md is your index. Keep it under 200 lines." in empty
+
+    populated = memory.build_memory_block(memory_dir, "user", "my notes")  # type: ignore[attr-defined]
+    assert "## Current MEMORY.md\nmy notes" in populated
+
+    read_only = memory.build_read_only_memory_block(memory_dir, "user", None)  # type: ignore[attr-defined]
+    assert read_only.startswith("# Agent Memory (read-only)")
+    assert "No memory is available yet." in read_only
+    assert "Memory instructions" not in read_only
+
+    memory_dir.mkdir()
+    (memory_dir / "MEMORY.md").write_text("\n".join(f"line{i}" for i in range(250)))
+    content = memory.read_memory_file(memory_dir)  # type: ignore[attr-defined]
+    assert content.endswith("... (truncated at 200 lines)")
+    assert "line199" in content
+    assert "line200\n" not in content
+
+
+async def test_memory_injection_rw_and_ro(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(RecordingSession(tmp_path))
+    module = _extension_module()
+    (tmp_path / ".tau" / "agents").mkdir(parents=True)
+    (tmp_path / ".tau" / "agents" / "memo.md").write_text(
+        "---\ndescription: RW memory agent\nmemory: project\n---\nRemember things."
+    )
+    (tmp_path / ".tau" / "agents" / "memoro.md").write_text(
+        "---\ndescription: RO memory agent\nmemory: project\ntools: read\n---\nRead only."
+    )
+    rw_provider = FakeProvider([_text_stream("done")])
+    ro_provider = FakeProvider([_text_stream("done")])
+    _patch_provider_sequence(module, [rw_provider, ro_provider])
+
+    agent_tool = _agent_tool(runtime)
+    await agent_tool.execute(
+        "call-1",
+        {"prompt": "go", "description": "go", "subagent_type": "memo"}
+    )
+    rw_system = rw_provider.calls[0][1]
+    assert "# Agent Memory\n" in rw_system
+    assert "read-only" not in rw_system
+    assert (tmp_path / ".tau" / "agent-memory" / "memo").is_dir()
+
+    await agent_tool.execute(
+        "call-1",
+        {"prompt": "go", "description": "go", "subagent_type": "memoro"}
+    )
+    ro_system = ro_provider.calls[0][1]
+    assert "# Agent Memory (read-only)" in ro_system
+    assert not (tmp_path / ".tau" / "agent-memory" / "memoro").exists()
+    ro_tool_names = {tool.name for tool in ro_provider.calls[0][3]}
+    assert "read" in ro_tool_names
+    assert "write" not in ro_tool_names
+
+
+async def test_memory_block_precedes_skills_in_prompt(tmp_path: Path) -> None:
+    _load_runtime(tmp_path)
+    module = _extension_module()
+    definition = module.AgentDefinition(  # type: ignore[attr-defined]
+        name="helper", description="d", system_prompt="Body."
+    )
+    combined = module.build_child_system_prompt(  # type: ignore[attr-defined]
+        definition,
+        parent_prompt=None,
+        environment="",
+        skill_blocks=[("s", "SB")],
+        memory_block="MEM",
+    )
+    assert combined == "Body.\n\nMEM\n\n# Preloaded Skill: s\nSB"
+
+
+async def test_agent_frontmatter_memory_and_isolation(tmp_path: Path) -> None:
+    _load_runtime(tmp_path)
+    module = _extension_module()
+    (tmp_path / ".tau" / "agents").mkdir(parents=True)
+    (tmp_path / ".tau" / "agents" / "iso.md").write_text(
+        "---\ndescription: x\nmemory: local\nisolation: worktree\n---\nBody."
+    )
+    (tmp_path / ".tau" / "agents" / "bad.md").write_text(
+        "---\ndescription: x\nmemory: galactic\nisolation: docker\n---\nBody."
+    )
+
+    definitions = module.load_agent_definitions(tmp_path)  # type: ignore[attr-defined]
+    assert definitions["iso"].memory == "local"
+    assert definitions["iso"].isolation == "worktree"
+    assert definitions["bad"].memory is None
+    assert definitions["bad"].isolation is None
+
+
+async def test_run_records_persisted(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    session = RecordingSession(tmp_path)
+    runtime.bind(session)
+    module = _extension_module()
+    _patch_provider_sequence(
+        module,
+        [
+            FakeProvider([_text_stream("fg done")]),
+            FakeProvider([_text_stream("bg done")]),
+        ],
+    )
+
+    agent_tool = _agent_tool(runtime)
+    await agent_tool.execute("call-1", {"prompt": "fg", "description": "fg task"})
+    records = [
+        data for namespace, data in session.custom_entries
+        if namespace == "subagents:record"
+    ]
+    assert len(records) == 1
+    assert records[0]["id"] == "agent-1"
+    assert records[0]["status"] == "completed"
+    assert records[0]["result"] == "fg done"
+    assert records[0]["turns"] == 1
+
+    await agent_tool.execute(
+        "call-1",
+        {"prompt": "bg", "description": "bg task", "run_in_background": True}
+    )
+    await _wait_for(
+        lambda: any(
+            namespace == "subagents:record" and data["id"] == "agent-2"
+            for namespace, data in session.custom_entries
+        )
+    )
+
+
+async def test_model_and_thinking_param_precedence(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(RecordingSession(tmp_path))
+    module = _extension_module()
+    (tmp_path / ".tau" / "agents").mkdir(parents=True)
+    (tmp_path / ".tau" / "agents" / "pinned.md").write_text(
+        "---\ndescription: Pinned agent\nmodel: pinned-model\nthinking: low\n---\nBody."
+    )
+    provider_names, models, thinking_levels = _patch_recording_provider(
+        module, [FakeProvider([_text_stream("done")]) for _ in range(3)]
+    )
+
+    agent_tool = _agent_tool(runtime)
+    await agent_tool.execute(
+        "call-1",
+        {
+            "prompt": "x",
+            "description": "x",
+            "provider": "openai-codex",
+            "model": "gpt-5.6-sol",
+            "thinking": "high",
+        }
+    )
+    assert provider_names[-1] == "openai-codex"
+    assert models[-1] == "gpt-5.6-sol"  # param used when frontmatter has none
+    assert thinking_levels[-1] == "high"
+
+    await agent_tool.execute("call-1", {"prompt": "x", "description": "x"})
+    assert provider_names[-1] == "fake"  # inherited from parent session
+    assert models[-1] == "fake"  # inherited from parent session
+    assert thinking_levels[-1] == "medium"  # DEFAULT_THINKING_LEVEL
+
+    await agent_tool.execute(
+        "call-1",
+        {
+            "prompt": "x",
+            "description": "x",
+            "subagent_type": "pinned",
+            "model": "haiku",
+            "thinking": "high",
+        }
+    )
+    assert models[-1] == "pinned-model"  # frontmatter beats the param
+    assert thinking_levels[-1] == "low"
+
+
+async def test_invalid_thinking_rejected(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(RecordingSession(tmp_path))
+
+    agent_tool = _agent_tool(runtime)
+    result = await agent_tool.execute(
+        "call-1",
+        {"prompt": "x", "description": "x", "thinking": "ultra"}
+    )
+    assert "Invalid thinking level: ultra." in result.text
+    assert "Valid options: off, minimal, low, medium, high, xhigh" in result.text
+
+    get_result = next(
+        tool for tool in runtime.extension_tools if tool.name == "get_subagent_result"
+    )
+    unknown = await get_result.execute("call-1", {"agent_id": "agent-1"})
+    # The rejected spawn must not have created a run.
+    assert "Unknown agent_id: agent-1" in unknown.text
+
+
+async def test_skills_true_pins_discovery_to_parent_cwd_under_worktree(
+    tmp_path: Path,
+) -> None:
+    runtime = _load_runtime(tmp_path)
+    repo = tmp_path / "repo"
+    _init_git_repo(repo)
+    runtime.bind(RecordingSession(repo))
+    module = _extension_module()
+    # Created AFTER the commit: the parent cwd has this skill, but a detached
+    # worktree checkout of HEAD does not.
+    (repo / ".tau" / "skills" / "parentskill").mkdir(parents=True)
+    (repo / ".tau" / "skills" / "parentskill" / "SKILL.md").write_text(
+        "---\ndescription: Parent-only skill\n---\nDo parent things."
+    )
+    (repo / ".tau" / "agents").mkdir(exist_ok=True)
+    (repo / ".tau" / "agents" / "pinned.md").write_text(
+        "---\ndescription: Pins skills\nskills: true\nisolation: worktree\n---\nBody."
+    )
+    (repo / ".tau" / "agents" / "unpinned.md").write_text(
+        "---\ndescription: Default discovery\nisolation: worktree\n---\nBody."
+    )
+    pinned_provider = FakeProvider([_text_stream("done")])
+    unpinned_provider = FakeProvider([_text_stream("done")])
+    _patch_provider_sequence(module, [pinned_provider, unpinned_provider])
+
+    agent_tool = _agent_tool(runtime)
+    pinned = await agent_tool.execute(
+        "call-1",
+        {"prompt": "go", "description": "go", "subagent_type": "pinned"}
+    )
+    unpinned = await agent_tool.execute(
+        "call-1",
+        {"prompt": "go", "description": "go", "subagent_type": "unpinned"}
+    )
+    pinned_system = pinned_provider.calls[0][1]
+    unpinned_system = unpinned_provider.calls[0][1]
+    # skills: true resolves resources against the parent cwd, so the child
+    # sees the uncommitted parent skill; default discovery resolves against
+    # the worktree copy, which lacks it.
+    assert "<name>parentskill</name>" in pinned_system
+    assert "# Preloaded Skill:" not in pinned_system  # native index, not blocks
+    assert "<name>parentskill</name>" not in unpinned_system
+
+
+async def test_skills_none_disables_native_discovery(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(RecordingSession(tmp_path))
+    module = _extension_module()
+    (tmp_path / ".tau" / "skills" / "idxskill").mkdir(parents=True)
+    (tmp_path / ".tau" / "skills" / "idxskill" / "SKILL.md").write_text(
+        "---\ndescription: Indexed skill\n---\nDo indexed things."
+    )
+    (tmp_path / ".tau" / "agents").mkdir(exist_ok=True)
+    (tmp_path / ".tau" / "agents" / "noskills.md").write_text(
+        "---\ndescription: No skills\nskills: none\n---\nBody."
+    )
+    control_provider = FakeProvider([_text_stream("done")])
+    noskills_provider = FakeProvider([_text_stream("done")])
+    _patch_provider_sequence(module, [control_provider, noskills_provider])
+
+    agent_tool = _agent_tool(runtime)
+    control = await agent_tool.execute("call-1", {"prompt": "x", "description": "x"})
+    noskills = await agent_tool.execute(
+        "call-1",
+        {"prompt": "x", "description": "x", "subagent_type": "noskills"}
+    )
+    control_system = control_provider.calls[0][1]
+    assert "<name>idxskill</name>" in control_system  # omitted => native discovery
+    noskills_system = noskills_provider.calls[0][1]
+    assert "<available_skills>" not in noskills_system
+    assert "idxskill" not in noskills_system
+
+
+async def test_named_skills_preload_disables_native_index(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(RecordingSession(tmp_path))
+    module = _extension_module()
+    (tmp_path / ".tau" / "skills" / "idxskill").mkdir(parents=True)
+    (tmp_path / ".tau" / "skills" / "idxskill" / "SKILL.md").write_text(
+        "---\ndescription: Indexed skill\n---\nDo indexed things."
+    )
+    (tmp_path / ".tau" / "agents").mkdir(exist_ok=True)
+    (tmp_path / ".tau" / "agents" / "preloader.md").write_text(
+        "---\ndescription: Preloads\nskills: idxskill\n---\nBody."
+    )
+    provider = FakeProvider([_text_stream("done")])
+    _patch_provider_factory(module, provider)
+
+    agent_tool = _agent_tool(runtime)
+    result = await agent_tool.execute(
+        "call-1",
+        {"prompt": "x", "description": "x", "subagent_type": "preloader"}
+    )
+    system = provider.calls[0][1]
+    assert "# Preloaded Skill: idxskill" in system
+    assert "<available_skills>" not in system  # pi: named preload sets noSkills
+
+
+async def test_usage_surfaced_in_results_and_notifications(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    session = RecordingSession(tmp_path)
+    runtime.bind(session)
+    module = _extension_module()
+    _patch_provider_sequence(
+        module,
+        [
+            FakeProvider([_text_stream("fg done")]),
+            FakeProvider([_text_stream("bg done")]),
+        ],
+    )
+
+    agent_tool = _agent_tool(runtime)
+    result = await agent_tool.execute("call-1", {"prompt": "fg", "description": "fg"})
+    assert "Agent completed in " in result.text
+    assert "(0 tool uses, ~" in result.text
+    assert "context tokens)." in result.text
+
+    get_result = next(
+        tool for tool in runtime.extension_tools if tool.name == "get_subagent_result"
+    )
+    fetched = await get_result.execute("call-1", {"agent_id": "agent-1"})
+    assert "Usage: 0 tool uses · ~" in fetched.text
+    assert "context tokens" in fetched.text
+
+    await agent_tool.execute(
+        "call-1",
+        {"prompt": "bg", "description": "bg", "run_in_background": True}
+    )
+    await _wait_for(lambda: session.followed_up)
+    note = session.followed_up[0]
+    # Notifications stay minimal: usage lives in the get_subagent_result
+    # header and the TUI card details, not in the model-visible XML.
+    assert "<usage>" not in note
+    assert "<turns>" not in note
+    assert "<result>bg done</result>" in note
+
+
+def test_task_notification_is_fit_or_fetch() -> None:
+    # A result that fits the cap is included whole; a longer one is omitted
+    # entirely with a get_subagent_result pointer — never truncated, so the
+    # parent is never tempted to act on partial output. Turns/usage/type are
+    # omitted too: get_subagent_result repeats them in its header.
+    from tau_subagents.extension import AgentRun, format_task_notification
+
+    def _run(text: str) -> AgentRun:
+        return AgentRun(
+            agent_id="agent-9",
+            agent_type="general",
+            description="d",
+            prompt="p",
+            background=True,
+            status="completed",
+            result_text=text,
+        )
+
+    short = format_task_notification(_run("all done"))
+    assert "<result>all done</result>" in short
+    assert "<result-pending>" not in short
+    assert "<usage>" not in short
+    assert "<turns>" not in short
+    assert "<type>" not in short
+
+    long_text = "x" * 501
+    long = format_task_notification(_run(long_text))
+    assert long_text not in long
+    assert "x" * 50 not in long  # no partial preview either
+    assert "<result>" not in long
+    assert (
+        '<result-pending>Result is 501 chars. Call get_subagent_result("agent-9")'
+        in long
+    )
+
+    # Boundary: exactly at the cap still ships inline.
+    exact = format_task_notification(_run("y" * 500))
+    assert f"<result>{'y' * 500}</result>" in exact
+
+
+def _usage_stream(
+    text: str, input_tokens: int, output: int, cache_write: int
+) -> list[object]:
+    return [
+        AssistantStartEvent(partial=AssistantMessage(model="fake")),
+        AssistantDoneEvent(
+            reason="stop",
+            message=AssistantMessage(
+                content=text,
+                usage=Usage(
+                    input=input_tokens,
+                    output=output,
+                    cache_write=cache_write,
+                    # cache_read must be excluded from lifetime totals.
+                    cache_read=999,
+                ),
+            )
+        ),
+    ]
+
+
+async def test_real_usage_accumulates_and_surfaces(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    session = RecordingSession(tmp_path)
+    runtime.bind(session)
+    module = _extension_module()
+    _patch_provider_sequence(
+        module,
+        [
+            FakeProvider(
+                [
+                    _usage_stream("fg done", 100, 20, 7),
+                    _usage_stream("resumed done", 30, 10, 3),
+                ]
+            ),
+            FakeProvider([_usage_stream("bg done", 50, 10, 0)]),
+        ],
+    )
+
+    agent_tool = _agent_tool(runtime)
+    result = await agent_tool.execute("call-1", {"prompt": "fg", "description": "fg"})
+    assert "(0 tool uses, 127 tokens)." in result.text
+
+    get_result = next(
+        tool for tool in runtime.extension_tools if tool.name == "get_subagent_result"
+    )
+    fetched = await get_result.execute("call-1", {"agent_id": "agent-1"})
+    assert "Usage: 127 tokens · 0 tool uses" in fetched.text
+
+    # Resume keeps accumulating into the lifetime total (127 + 43 = 170),
+    # matching pi, which preserves lifetimeUsage across resume.
+    resumed = await agent_tool.execute("call-1", {"resume": "agent-1", "prompt": "more"})
+    assert "(0 tool uses, 170 tokens)." in resumed.text
+
+    await agent_tool.execute(
+        "call-1",
+        {"prompt": "bg", "description": "bg", "run_in_background": True}
+    )
+    await _wait_for(lambda: session.followed_up)
+    note = session.followed_up[0]
+    assert "<usage>" not in note
+    assert "<result>bg done</result>" in note
+
+
+async def test_foreground_run_emits_live_stats_ticker(tmp_path: Path) -> None:
+    # The ticker is one stable, cumulative line in the completion card's stats
+    # vocabulary — NOT the per-event "agent-n: turn n" activity echo that was
+    # dropped as transcript noise (d0d5ac8). It only fires when a stat changes,
+    # so the running row morphs into the finished card.
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(RecordingSession(tmp_path))
+    module = _extension_module()
+    provider = FakeProvider(
+        [_tool_call_stream("working", "t1"), _text_stream("Final answer")]
+    )
+    _patch_provider_factory(module, provider)
+
+    agent_tool = _agent_tool(runtime)
+    updates: list[str] = []
+
+    result = await agent_tool.execute(
+        "call-1",
+        {"prompt": "go", "description": "d"},
+        on_update=lambda partial: updates.append(partial.text),
+    )
+    assert updates, "foreground run should stream the live stats ticker"
+    assert "1 tool use" in updates
+    assert updates[-1] == "2 turns · 1 tool use"
+    # Cumulative and deduplicated: every emission differs from the previous.
+    assert len(updates) == len(set(updates))
+    assert all("agent-" not in message for message in updates)
+
+
+async def test_inherit_context_prepends_parent_conversation(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    session = RecordingSession(tmp_path)
+    session.messages = [
+        UserMessage(content="parent question"),
+        AssistantMessage(content="parent answer"),
+    ]
+    runtime.bind(session)
+    module = _extension_module()
+    provider = FakeProvider([_text_stream("done")])
+    _patch_provider_factory(module, provider)
+
+    agent_tool = _agent_tool(runtime)
+    result = await agent_tool.execute(
+        "call-1",
+        {"prompt": "child task", "description": "d", "inherit_context": True}
+    )
+    child_messages = provider.calls[0][2]
+    first = child_messages[0]
+    assert first.text.startswith("# Parent Conversation Context")
+    assert "[User]: parent question" in first.text
+    assert "[Assistant]: parent answer" in first.text
+    assert "# Your Task (below)\nchild task" in first.text
+
+
+def test_notification_renderer_formats_details(tmp_path: Path) -> None:
+    _load_runtime(tmp_path)
+    render = _submodule("notification_render").render_notification
+    details = {
+        "description": "deploy watch",
+        "status": "completed",
+        "turn_count": 3,
+        "max_turns": 10,
+        "tool_uses": 2,
+        "total_tokens": 1500,
+        "duration_ms": 2300,
+        "output_file": "/tmp/t.jsonl",
+        "error": None,
+        "result_preview": "line one\nline two",
+    }
+    view = SimpleNamespace(details=details)
+
+    collapsed = render(view, SimpleNamespace(expanded=False))
+    assert "[green]✓[/green]" in collapsed
+    assert "[bold]deploy watch[/bold]" in collapsed
+    assert "3 turns (max 10)" in collapsed
+    assert "1.5k tokens" in collapsed
+    assert "2.3s" in collapsed
+    # A multi-line preview collapses to its first line plus an ellipsis, and
+    # the transcript path stays out of the collapsed card.
+    assert "⎿  line one…" in collapsed
+    assert "line two" not in collapsed
+    assert "transcript:" not in collapsed
+
+    expanded = render(view, SimpleNamespace(expanded=True))
+    assert "line two" in expanded
+    assert "transcript: /tmp/t.jsonl" in expanded
+
+    # Long first lines cut at a word boundary, never mid-word.
+    long_view = SimpleNamespace(
+        details={**details, "result_preview": ("word " * 40).strip()}
+    )
+    long_collapsed = render(long_view, SimpleNamespace(expanded=False))
+    preview_line = next(
+        line for line in long_collapsed.split("\n") if "⎿" in line
+    )
+    assert preview_line.rstrip("[/dim]").endswith("word…")
+
+    # Durations of a minute or more switch to the elapsed style.
+    slow_view = SimpleNamespace(details={**details, "duration_ms": 83_200})
+    assert "1m 23s" in render(slow_view, SimpleNamespace(expanded=False))
+
+    error_view = SimpleNamespace(details={**details, "status": "error"})
+    assert "[red]✗[/red]" in render(error_view, SimpleNamespace(expanded=False))
+
+    cancelled_view = SimpleNamespace(details={**details, "status": "cancelled"})
+    cancelled_card = render(cancelled_view, SimpleNamespace(expanded=False))
+    assert "[dim]∅[/dim]" in cancelled_card
+    assert "[red]" not in cancelled_card
+
+    grouped = SimpleNamespace(
+        details={**details, "others": [{**details, "description": "second run"}]}
+    )
+    both = render(grouped, SimpleNamespace(expanded=False))
+    assert "deploy watch" in both
+    assert "second run" in both
+
+    assert render(SimpleNamespace(details=None), SimpleNamespace(expanded=False)) is None
+
+
+def test_agent_result_renderer_formats_card(tmp_path: Path) -> None:
+    _load_runtime(tmp_path)
+    render = _submodule("notification_render").render_agent_result
+    details = {
+        "description": "deploy watch",
+        "status": "completed",
+        "turn_count": 3,
+        "max_turns": 10,
+        "tool_uses": 2,
+        "total_tokens": 1500,
+        "duration_ms": 2300,
+        "output_file": "/tmp/t.jsonl",
+        "error": None,
+        "result_preview": "line one\nline two",
+    }
+
+    collapsed = render(SimpleNamespace(details=details), expanded=False)
+    # Compact card: the description already sits on the invocation line above,
+    # so the card starts with the status and stats.
+    assert collapsed.startswith("[green]✓[/green] [dim]completed · 3 turns (max 10)")
+    assert "deploy watch" not in collapsed
+    assert "1.5k tokens" in collapsed
+    assert "⎿  line one…" in collapsed
+    assert "transcript:" not in collapsed
+
+    expanded = render(SimpleNamespace(details=details), expanded=True)
+    assert "line two" in expanded
+    assert "transcript: /tmp/t.jsonl" in expanded
+
+    # Failure previews render red (the run's error text, not routine output).
+    error = render(
+        SimpleNamespace(details={**details, "status": "error", "result_preview": "boom"}),
+        expanded=False,
+    )
+    assert error.startswith("[red]✗[/red] [dim]error")
+    assert "[red]⎿  boom[/red]" in error
+
+    # A steered finish gets the cautionary yellow ✓.
+    steered = render(
+        SimpleNamespace(details={**details, "status": "steered"}), expanded=False
+    )
+    assert steered.startswith("[yellow]✓[/yellow] [dim]completed (steered)")
+
+    # User-initiated stops render neutral-dim (pi's ■ Stopped), not red.
+    cancelled = render(
+        SimpleNamespace(details={**details, "status": "cancelled"}), expanded=False
+    )
+    assert cancelled.startswith("[dim]∅[/dim] [dim]cancelled")
+    assert "[red]" not in cancelled
+
+    # Expanded views past the line cap say what was hidden.
+    tall = SimpleNamespace(
+        details={**details, "result_preview": "\n".join(f"l{i}" for i in range(35))}
+    )
+    tall_expanded = render(tall, expanded=True)
+    assert "… 5 more lines — get_subagent_result for full output" in tall_expanded
+
+    # Result text with Rich markup renders literally (escaping round-trip).
+    from rich.text import Text
+
+    marked = render(
+        SimpleNamespace(
+            details={**details, "result_preview": "found [red]3[/red] in [module]"}
+        ),
+        expanded=False,
+    )
+    assert "found [red]3[/red] in [module]" in Text.from_markup(marked).plain
+
+    spawned = render(
+        SimpleNamespace(details={"status": "background", "agent_id": "agent-1"}),
+        expanded=False,
+    )
+    assert spawned == "  [dim]⎿  Running in background (agent-1)[/dim]"
+    queued = render(
+        SimpleNamespace(
+            details={"status": "background", "agent_id": "agent-2", "queued": True}
+        ),
+        expanded=False,
+    )
+    assert "Queued in background (agent-2)" in queued
+    spawned_expanded = render(
+        SimpleNamespace(
+            details={
+                "status": "background",
+                "agent_id": "agent-1",
+                "output_file": "/tmp/t.jsonl",
+            }
+        ),
+        expanded=True,
+    )
+    assert "transcript: /tmp/t.jsonl" in spawned_expanded
+
+    # No details (e.g. argument-validation failures) → generic fallback.
+    assert render(SimpleNamespace(details=None), expanded=False) is None
+
+
+async def test_hard_cancel_cascades_to_the_child(tmp_path: Path) -> None:
+    # Esc in the TUI hard-cancels the tool coroutine (consumer teardown). The
+    # cascade must take the child down too — no zombie run burning tokens with
+    # its result silently dropped — settle the record as cancelled, and clear
+    # the ticker callback.
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(RecordingSession(tmp_path))
+    release = asyncio.Event()
+    _patch_provider_factory(_extension_module(), BlockingProvider(release, "done"))
+
+    agent_tool = _agent_tool(runtime)
+    updates: list[str] = []
+    task = asyncio.create_task(
+        agent_tool.execute(
+            "call-1",
+            {"prompt": "go", "description": "d"},
+            on_update=lambda partial: updates.append(partial.text),
+        )
+    )
+    await asyncio.sleep(0.1)  # let the executor enter its wait loop
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    # The child is gone and the record settled: /agents and get_subagent_result
+    # agree the run is over.
+    get_result = next(
+        tool for tool in runtime.extension_tools if tool.name == "get_subagent_result"
+    )
+    probed = await get_result.execute("call-1", {"agent_id": "agent-1"})
+    assert "[cancelled]" in probed.text
+
+    updates.clear()
+    release.set()
+    # Pump the loop; a surviving child (or leaked callback) would tick here.
+    for _ in range(20):
+        await asyncio.sleep(0.01)
+    assert updates == []
+    probed_again = await get_result.execute("call-1", {"agent_id": "agent-1"})
+    assert "[cancelled]" in probed_again.text
+
+
+async def test_foreground_cancel_returns_cancelled_card_details(tmp_path: Path) -> None:
+    # Esc-cancel stays in the card family: the result carries details so the
+    # row renders "✗ cancelled" instead of falling back to the generic block.
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(RecordingSession(tmp_path))
+    release = asyncio.Event()
+    _patch_provider_factory(_extension_module(), BlockingProvider(release, "never"))
+
+    agent_tool = _agent_tool(runtime)
+    signal = SimpleNamespace(is_cancelled=lambda: True)
+    result = await agent_tool.execute("call-1", {"prompt": "go", "description": "d"}, signal=signal)
+    assert "Subagent cancelled" in result.text
+    assert result.details is not None
+    assert result.details["status"] == "cancelled"
+
+
+async def test_notification_delivered_as_custom_message(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    session = RecordingSession(tmp_path)
+    runtime.bind(session)
+    _patch_provider_factory(_extension_module(), FakeProvider([_text_stream("done")]))
+
+    agent_tool = _agent_tool(runtime)
+    await agent_tool.execute(
+        "call-1",
+        {"prompt": "bg", "description": "bg task", "run_in_background": True}
+    )
+    await _wait_for(lambda: session.followed_up)
+
+    custom_type, details = session.followed_up_custom[0]
+    assert custom_type == "subagent-notification"
+    assert details is not None
+    assert details["description"] == "bg task"
+    assert details["status"] == "completed"
+    assert details["result_preview"] == "done"
+    # The raw XML content still enters context for the model.
+    assert "<task-notification>" in session.followed_up[0]
+
+
+class ScriptedUi:
+    """Scripted DialogUi fake for menu tests."""
+
+    def __init__(self, selects, confirms=(), inputs=()) -> None:  # noqa: ANN001
+        self.selects = list(selects)
+        self.confirms = list(confirms)
+        self.inputs = list(inputs)
+        self.select_calls: list[tuple[str, tuple[str, ...]]] = []
+        self.notifications: list[str] = []
+
+    @property
+    def has_ui(self) -> bool:
+        return True
+
+    def notify(self, message: str, level: str = "info") -> None:
+        self.notifications.append(message)
+
+    async def select(self, title, options, *, timeout=None):  # noqa: ANN001, ANN202
+        self.select_calls.append((title, tuple(options)))
+        answer = self.selects.pop(0)
+        return answer(options) if callable(answer) else answer
+
+    async def confirm(self, title, message, *, timeout=None):  # noqa: ANN001, ANN202
+        return self.confirms.pop(0)
+
+    async def input(self, title, placeholder="", *, timeout=None):  # noqa: ANN001, ANN202
+        return self.inputs.pop(0)
+
+
+def _menu_run(module, **overrides):  # noqa: ANN001, ANN202
+    defaults = {
+        "agent_id": "agent-1",
+        "agent_type": "general",
+        "description": "task",
+        "prompt": "p",
+        "background": True,
+    }
+    defaults.update(overrides)
+    return module.AgentRun(**defaults)
+
+
+async def test_agents_menu_stops_running_agent(tmp_path: Path) -> None:
+    _load_runtime(tmp_path)
+    menu = _submodule("agents_menu")
+    run = _menu_run(_extension_module(), status="running")
+    manager = SimpleNamespace(runs={"agent-1": run}, definitions=dict)
+    ui = ScriptedUi(
+        selects=[
+            lambda options: options[0],  # top: Running agents (…)
+            lambda options: options[0],  # the run
+            "Stop",
+            None,  # leave run list
+            None,  # leave top menu
+        ],
+        confirms=[True],
+    )
+
+    await menu.show_agents_menu(manager, ui)
+
+    assert run.aborted is True
+    assert any("Stopped" in note for note in ui.notifications)
+
+
+async def test_agents_menu_steers_queued_agent(tmp_path: Path) -> None:
+    _load_runtime(tmp_path)
+    menu = _submodule("agents_menu")
+    run = _menu_run(_extension_module(), status="queued")
+    manager = SimpleNamespace(runs={"agent-1": run}, definitions=dict)
+    ui = ScriptedUi(
+        selects=[
+            lambda options: options[0],
+            lambda options: options[0],
+            "Steer…",
+            None,
+            None,
+        ],
+        inputs=["focus on tests"],
+    )
+
+    await menu.show_agents_menu(manager, ui)
+
+    assert run.pending_steers == ["focus on tests"]
+
+
+async def test_agents_menu_shows_finished_result(tmp_path: Path) -> None:
+    _load_runtime(tmp_path)
+    menu = _submodule("agents_menu")
+    run = _menu_run(
+        _extension_module(), status="completed", result_text="All done here"
+    )
+    manager = SimpleNamespace(runs={"agent-1": run}, definitions=dict)
+    ui = ScriptedUi(
+        selects=[
+            lambda options: options[0],
+            lambda options: options[0],
+            "View result",
+            None,
+            None,
+        ],
+    )
+
+    await menu.show_agents_menu(manager, ui)
+
+    assert any("All done here" in note for note in ui.notifications)
+    assert menu.supports_menu(ui) is True
+    assert menu.supports_menu(None) is False
+
+
+async def test_agents_menu_opens_conversation_via_component_seam(tmp_path: Path) -> None:
+    # The transcript-source view_transcript seam is gone: the menu now opens the
+    # extension's own viewer through the component controller. On success the
+    # whole menu unwinds ("exit") so the user lands in the view.
+    _load_runtime(tmp_path)
+    menu = _submodule("agents_menu")
+    run = _menu_run(_extension_module(), status="running")
+    manager = SimpleNamespace(runs={"agent-1": run}, definitions=dict)
+
+    opened: list[str] = []
+
+    class FakeController:
+        def open_conversation(self, run) -> bool:  # noqa: ANN001
+            opened.append(run.agent_id)
+            return True
+
+    ui = ScriptedUi(
+        selects=[
+            lambda options: options[0],  # top: Running agents (…)
+            lambda options: options[0],  # the run → opens the viewer
+        ],
+    )
+
+    await menu.show_agents_menu(manager, ui, controller=FakeController())
+
+    assert opened == ["agent-1"]
+    # The action submenu never opened (only the two selects above).
+    assert len(ui.select_calls) == 2
+
+
+async def test_agents_menu_degrades_to_actions_without_controller(tmp_path: Path) -> None:
+    # A component-less host (controller=None) falls straight to the action
+    # submenu, exactly as the old view_transcript-missing branch did.
+    _load_runtime(tmp_path)
+    menu = _submodule("agents_menu")
+    run = _menu_run(_extension_module(), status="running")
+    manager = SimpleNamespace(runs={"agent-1": run}, definitions=dict)
+
+    ui = ScriptedUi(
+        selects=[
+            lambda options: options[0],  # top: Running agents (…)
+            lambda options: options[0],  # the run → no controller → actions
+            "Back",  # action submenu
+            None,  # leave run list
+            None,  # leave top menu
+        ],
+    )
+
+    await menu.show_agents_menu(manager, ui, controller=None)
+
+    # The action submenu opened (its title names the run).
+    assert any(title.startswith("agent-1 [running]") for title, _ in ui.select_calls)
+
+
+def test_render_call_lines() -> None:
+    extension = _extension_module()
+
+    assert (
+        extension.render_agent_call(
+            {"subagent_type": "explore", "description": "Summarize codebase"}
+        )
+        == "▸ explore agent · Summarize codebase"
+    )
+    assert extension.render_agent_call({"prompt": "x"}) == "▸ general agent"
+    assert (
+        extension.render_agent_call(
+            {"description": "Daily check", "schedule": "0 9 * * 1"}
+        )
+        == "▸ general agent (scheduled 0 9 * * 1) · Daily check"
+    )
+    assert (
+        extension.render_get_result_call({"agent_id": "agent-3", "wait": True})
+        == "▸ get result · agent-3 (wait)"
+    )
+    steer_line = extension.render_steer_call(
+        {"agent_id": "agent-3", "message": "focus " * 30}
+    )
+    assert steer_line.startswith("▸ steer agent-3 · focus")
+    assert len(steer_line) < 90
+
+
+def test_registered_tools_carry_render_call(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+
+    line = runtime.render_tool_call(
+        "agent", {"subagent_type": "explore", "description": "Summarize codebase"}
+    )
+
+    assert line == "▸ explore agent · Summarize codebase"
+
+
+async def test_inherit_context_skips_empty_parent(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(RecordingSession(tmp_path))
+    module = _extension_module()
+    provider = FakeProvider([_text_stream("done")])
+    _patch_provider_factory(module, provider)
+
+    agent_tool = _agent_tool(runtime)
+    await agent_tool.execute(
+        "call-1",
+        {"prompt": "child task", "description": "d", "inherit_context": True}
+    )
+
+    first = provider.calls[0][2][0]
+    assert first.text == "child task"
+
+
+async def test_consuming_within_nudge_window_suppresses_notification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = _load_runtime(tmp_path)
+    session = RecordingSession(tmp_path)
+    runtime.bind(session)
+    module = _extension_module()
+    module.load_subagent_settings = (  # type: ignore[attr-defined]
+        lambda cwd, home=None: module.SubagentSettings(default_join_mode="async")
+    )
+    monkeypatch.setattr(module, "NUDGE_HOLD_SECONDS", 0.3)
+    _patch_provider_factory(module, FakeProvider([_text_stream("done")]))
+
+    agent_tool = _agent_tool(runtime)
+    await agent_tool.execute(
+        "call-1",
+        {"prompt": "x", "description": "x", "run_in_background": True}
+    )
+    get_result = next(
+        tool for tool in runtime.extension_tools if tool.name == "get_subagent_result"
+    )
+    fetched = None
+    for _ in range(500):
+        fetched = await get_result.execute("call-1", {"agent_id": "agent-1"})
+        if "[completed]" in fetched.text:
+            break
+        await asyncio.sleep(0.01)
+    assert fetched is not None and "[completed]" in fetched.text
+
+    # The read consumed the result inside the hold window; no nudge arrives.
+    await asyncio.sleep(0.5)
+    assert session.followed_up == []
+
+
+async def test_nudge_arrives_when_unconsumed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = _load_runtime(tmp_path)
+    session = RecordingSession(tmp_path)
+    runtime.bind(session)
+    module = _extension_module()
+    module.load_subagent_settings = (  # type: ignore[attr-defined]
+        lambda cwd, home=None: module.SubagentSettings(default_join_mode="async")
+    )
+    monkeypatch.setattr(module, "NUDGE_HOLD_SECONDS", 0.05)
+    _patch_provider_factory(module, FakeProvider([_text_stream("done")]))
+
+    agent_tool = _agent_tool(runtime)
+    await agent_tool.execute(
+        "call-1",
+        {"prompt": "x", "description": "x", "run_in_background": True}
+    )
+
+    await _wait_for(lambda: session.followed_up)
+    assert "<task-notification>" in session.followed_up[0]
+
+
+async def test_shutdown_cancels_pending_nudges(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = _load_runtime(tmp_path)
+    session = RecordingSession(tmp_path)
+    runtime.bind(session)
+    module = _extension_module()
+    module.load_subagent_settings = (  # type: ignore[attr-defined]
+        lambda cwd, home=None: module.SubagentSettings(default_join_mode="async")
+    )
+    monkeypatch.setattr(module, "NUDGE_HOLD_SECONDS", 0.5)
+    _patch_provider_factory(module, FakeProvider([_text_stream("done")]))
+
+    agent_tool = _agent_tool(runtime)
+    await agent_tool.execute(
+        "call-1",
+        {"prompt": "x", "description": "x", "run_in_background": True}
+    )
+    # The record is persisted just before the nudge is scheduled.
+    await _wait_for(
+        lambda: any(
+            namespace == "subagents:record"
+            for namespace, _data in session.custom_entries
+        )
+    )
+
+    await runtime.emit_session_shutdown("new")
+    await asyncio.sleep(0.7)
+    assert session.followed_up == []
+
+
+def test_extension_loads(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+
+    assert runtime.extension_names == ("tau_subagents",)
+    assert {tool.name for tool in runtime.extension_tools} == {
+        "agent",
+        "get_subagent_result",
+        "steer_subagent",
+    }
+    registry = runtime.build_command_registry()
+    assert registry.get("agents") is not None
+    assert not [diag for diag in runtime.diagnostics if diag.severity == "error"]
+
+
+async def test_foreground_run_returns_result(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(RecordingSession(tmp_path))
+    _patch_fake_provider(_extension_module(), response="Subagent report: all good.")
+
+    agent_tool = next(tool for tool in runtime.extension_tools if tool.name == "agent")
+    result = await agent_tool.execute(
+        "call-1",
+        {"prompt": "Investigate the repo", "description": "investigate repo"}
+    )
+    assert "Subagent report: all good." in result.text
+    assert "agent-1 [completed]" in result.text
+    # The result carries the completion-card details for the tool's
+    # render_result hook (the foreground twin of the background notification).
+    assert agent_tool.render_result is not None
+    assert result.details is not None
+    assert result.details["status"] == "completed"
+    assert result.details["result_preview"] == "Subagent report: all good."
+
+
+async def test_background_run_delivers_notification(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    session = RecordingSession(tmp_path)
+    runtime.bind(session)
+    _patch_fake_provider(_extension_module(), response="Done.")
+
+    agent_tool = next(tool for tool in runtime.extension_tools if tool.name == "agent")
+    spawn_result = await agent_tool.execute(
+        "call-1",
+        {
+            "prompt": "Long task",
+            "description": "long task",
+            "run_in_background": True,
+        }
+    )
+    assert "agent-1" in spawn_result.text
+    assert spawn_result.details is not None
+    assert spawn_result.details["status"] == "background"
+    assert spawn_result.details["agent_id"] == "agent-1"
+    assert spawn_result.details["queued"] is False
+    assert str(spawn_result.details["output_file"]).endswith("agent-1.jsonl")
+
+    for _ in range(200):
+        if session.followed_up:
+            break
+        await asyncio.sleep(0.01)
+
+    assert session.followed_up, "background completion should deliver a follow-up"
+    assert "<task-notification>" in session.followed_up[0]
+    assert "Done." in session.followed_up[0]
+
+
+async def test_unknown_agent_type_is_reported(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(RecordingSession(tmp_path))
+
+    agent_tool = next(tool for tool in runtime.extension_tools if tool.name == "agent")
+    result = await agent_tool.execute(
+        "call-1",
+        {"prompt": "x", "description": "x", "subagent_type": "nope"}
+    )
+    assert "Unknown subagent_type" in result.text
+
+
+class CapturingProvider:
+    """Records system + messages per request, then plays scripted streams."""
+
+    def __init__(self, streams: list[list[object]]) -> None:
+        self._streams = iter(streams)
+        self.calls: list[dict[str, object]] = []
+
+    def stream_response(self, *, model, system, messages, tools, signal=None):  # noqa: ANN001, ANN202
+        self.calls.append(
+            {"system": system, "messages": list(messages), "tools": list(tools or ())}
+        )
+        events = next(self._streams)
+
+        async def iterator():  # noqa: ANN202
+            for event in events:
+                yield event
+
+        return iterator()
+
+
+def _fork_parent(tmp_path: Path) -> RecordingSession:
+    session = RecordingSession(tmp_path)
+    session.messages = [
+        UserMessage(content="find the bug"),
+        AssistantMessage(
+            content=[
+                TextContent(text="spawning a fork"),
+                ToolCall(id="call-fork", name="agent"),
+            ],
+            stop_reason="toolUse",
+        ),
+    ]
+    return session
+
+
+def _patch_fork_resolution(module: object, provider: object) -> list[tuple]:
+    """Patch provider factories, recording (provider_name, model, thinking)."""
+    resolutions: list[tuple] = []
+    module.load_provider_settings = lambda: None  # type: ignore[attr-defined]
+
+    def fake_resolve(settings, provider_name=None, model=None):  # noqa: ANN001, ANN202
+        resolutions.append([provider_name, model])
+        return SimpleNamespace(
+            provider=SimpleNamespace(name=provider_name or "fake"),
+            model=model or "fake",
+        )
+
+    def fake_create(provider_arg, model, thinking_level):  # noqa: ANN001, ANN202
+        resolutions[-1].append(thinking_level)
+        return provider
+
+    module.resolve_provider_selection = fake_resolve  # type: ignore[attr-defined]
+    module.create_model_provider = fake_create  # type: ignore[attr-defined]
+    return resolutions
+
+
+async def test_fork_inherits_history_prompt_and_model(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(_fork_parent(tmp_path))
+    module = _extension_module()
+    provider = CapturingProvider([_text_stream("fork done")])
+    resolutions = _patch_fork_resolution(module, provider)
+
+    agent_tool = _agent_tool(runtime)
+    result = await agent_tool.execute(
+        "call-1",
+        {
+            "prompt": "review the diff",
+            "description": "d",
+            "subagent_type": "fork",
+            "inherit_context": True,  # accepted: a fork fulfills the request
+        },
+    )
+    assert "fork done" in result.text
+    # Parent's provider and model. The pinned tau-ai (< 0.4.0) does not
+    # expose the live thinking level, so the capture is None and the
+    # provider's persisted per-model level applies; see
+    # test_fork_passes_captured_thinking_level for the >= 0.4.0 path.
+    assert resolutions == [["fake", "fake", None]]
+    call = provider.calls[0]
+    # System prompt is the parent's, byte-identical.
+    assert call["system"] == "You are Tau."
+    messages = call["messages"]
+    assert messages[0].text == "find the bug"
+    assert messages[1].tool_calls[0].id == "call-fork"
+    # The dangling agent call is closed with a neutral (non-error) filler.
+    filler = messages[2]
+    assert filler.role == "toolResult"
+    assert filler.tool_call_id == "call-fork"
+    assert filler.is_error is False
+    # The task prompt is the next user turn, wrapped in the fork framing.
+    task = messages[3].text
+    assert task.startswith("<fork_task>")
+    assert "review the diff" in task
+    # inherit_context is ignored: no digest on top of the real history.
+    assert "# Parent Conversation Context" not in task
+
+
+async def test_fork_passes_captured_thinking_level(tmp_path: Path) -> None:
+    """With tau-ai >= 0.4.0 the parent's live thinking level is captured at
+    the tool call and forwarded verbatim, so the fork's thinking config
+    matches the parent's request (anything else costs prompt cache)."""
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(_fork_parent(tmp_path))
+    module = _extension_module()
+    fork_mod = _submodule("fork")
+    provider = CapturingProvider([_text_stream("fork done")])
+    resolutions = _patch_fork_resolution(module, provider)
+
+    # capture_fork reads `thinking_level` off the context when present.
+    context = SimpleNamespace(
+        system_prompt="You are Tau.",
+        # Differs from the live session's "fake" to prove the snapshot wins
+        # over the live parent selection the non-fork path reads.
+        model="snapshot-model",
+        provider_name="snapshot-provider",
+        thinking_level="high",
+        transcript=(UserMessage(content="q"),),
+    )
+    capture = fork_mod.capture_fork(context)
+    assert capture.thinking_level == "high"
+    assert fork_mod.capture_fork(
+        SimpleNamespace(
+            system_prompt="s", model="m", provider_name="p", transcript=()
+        )
+    ).thinking_level is None
+
+    # ...and the manager hands the captured level to the provider factory.
+    module.capture_fork = lambda ctx: capture  # type: ignore[attr-defined]
+    agent_tool = _agent_tool(runtime)
+    await agent_tool.execute(
+        "call-1",
+        {"prompt": "task", "description": "d", "subagent_type": "fork"},
+    )
+    assert resolutions == [["snapshot-provider", "snapshot-model", "high"]]
+
+
+async def test_fork_entries_are_parent_chained(tmp_path: Path) -> None:
+    """The parent_id chain is load-bearing: the child's first persisted turn
+    replays root-to-leaf, and unchained entries are silently dropped by Tau's
+    missing-parent detachment."""
+    _load_runtime(tmp_path)
+    fork_mod = _submodule("fork")
+    capture = fork_mod.ForkCapture(
+        system_prompt="You are Tau.",
+        model="fake",
+        provider_name="fake",
+        messages=(
+            UserMessage(content="q"),
+            AssistantMessage(content="a"),
+        ),
+    )
+    entries = fork_mod.build_fork_entries(capture, tmp_path)
+    assert entries[0].type == "session_info"
+    assert entries[0].parent_id is None
+    for previous, entry in zip(entries, entries[1:], strict=False):
+        assert entry.parent_id == previous.id
+
+
+async def test_fork_keeps_seed_in_provider_context_across_turns(
+    tmp_path: Path,
+) -> None:
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(_fork_parent(tmp_path))
+    module = _extension_module()
+    provider = CapturingProvider(
+        [_tool_call_stream("working", "c1"), _text_stream("done")]
+    )
+    _patch_fork_resolution(module, provider)
+
+    agent_tool = _agent_tool(runtime)
+    await agent_tool.execute(
+        "call-1",
+        {"prompt": "task", "description": "d", "subagent_type": "fork"},
+    )
+    # Second request still carries the full seed: 3 seeded (user, assistant,
+    # filler) + task prompt + assistant tool call + its tool result.
+    second = provider.calls[1]["messages"]
+    assert len(second) == 6
+    assert second[0].text == "find the bug"
+
+
+async def test_fork_output_file_skips_inherited_messages(tmp_path: Path) -> None:
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(_fork_parent(tmp_path))
+    module = _extension_module()
+    provider = CapturingProvider([_text_stream("fork done")])
+    _patch_fork_resolution(module, provider)
+
+    agent_tool = _agent_tool(runtime)
+    await agent_tool.execute(
+        "call-1",
+        {"prompt": "task", "description": "d", "subagent_type": "fork"},
+    )
+    transcripts = list(Path(tmp_path, "subagents-transcripts").rglob("*.jsonl"))
+    assert len(transcripts) == 1
+    lines = transcripts[0].read_text().splitlines()
+    entries = [json.loads(line) for line in lines]
+    # Prompt entry (with the inherited count) + the one new assistant message.
+    assert len(entries) == 2
+    assert entries[0]["inheritedMessages"] == 3
+    assert "find the bug" not in transcripts[0].read_text()
+
+
+async def test_fork_resumes_and_cannot_be_scheduled_and_name_is_reserved(
+    tmp_path: Path,
+) -> None:
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(_fork_parent(tmp_path))
+    module = _extension_module()
+    provider = CapturingProvider(
+        [_text_stream("fork done"), _text_stream("resumed")]
+    )
+    _patch_fork_resolution(module, provider)
+
+    agent_tool = _agent_tool(runtime)
+    await agent_tool.execute(
+        "call-1",
+        {"prompt": "task", "description": "d", "subagent_type": "fork"},
+    )
+    # A fork's session is an ordinary live session; resume is another user
+    # turn on top of the seeded history plus the fork's own turns.
+    result = await agent_tool.execute(
+        "call-2", {"prompt": "more", "description": "d", "resume": "agent-1"}
+    )
+    assert "resumed" in result.text
+    resumed = provider.calls[1]["messages"]
+    assert resumed[0].text == "find the bug"  # seeded prefix still present
+    assert resumed[-1].text == "more"
+
+    result = await agent_tool.execute(
+        "call-3",
+        {
+            "prompt": "x",
+            "description": "d",
+            "subagent_type": "fork",
+            "schedule": "5m",
+        },
+    )
+    assert "Cannot schedule a fork" in result.text
+
+    # A user fork.md must not overwrite the built-in fork type.
+    agents_mod = _submodule("agents")
+    home = tmp_path / "fake-home"
+    (home / ".tau" / "agents").mkdir(parents=True)
+    (home / ".tau" / "agents" / "fork.md").write_text(
+        "---\ndescription: not a fork\n---\nplain prompt\n"
+    )
+    definitions = agents_mod.load_agent_definitions(tmp_path, home)
+    assert definitions["fork"].fork is True
+
+
+async def test_children_load_extensions_and_isolated_opts_out(
+    tmp_path: Path, _isolate_home: Path
+) -> None:
+    """Children discover extensions natively (subagents can spawn subagents);
+    `isolated: true` restores a core-tools-only child; forks always keep the
+    extension tools so their tool pool matches the parent's."""
+    extensions_dir = _isolate_home / ".tau" / "extensions"
+    extensions_dir.mkdir(parents=True)
+    (extensions_dir / "tau-subagents").symlink_to(EXTENSION_DIR)
+
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(_fork_parent(tmp_path))
+    module = _extension_module()
+    providers = [CapturingProvider([_text_stream("done")]) for _ in range(3)]
+    _patch_provider_sequence(module, list(providers))
+
+    agent_tool = _agent_tool(runtime)
+    await agent_tool.execute("call-1", {"prompt": "t", "description": "d"})
+    await agent_tool.execute(
+        "call-2", {"prompt": "t", "description": "d", "isolated": True}
+    )
+    await agent_tool.execute(
+        "call-3",
+        {"prompt": "t", "description": "d", "subagent_type": "fork"},
+    )
+
+    def tool_names(provider: CapturingProvider) -> set[str]:
+        return {tool.name for tool in provider.calls[0]["tools"]}
+
+    assert "agent" in tool_names(providers[0])
+    assert "agent" not in tool_names(providers[1])
+    # A fork keeps the extension tools: parity with the parent's pool.
+    assert "agent" in tool_names(providers[2])
+
+
+async def test_fork_rejects_model_thinking_and_isolated(tmp_path: Path) -> None:
+    """Never silently drop a fork override: the parent must not believe it
+    spawned a cheaper model while the fork runs the parent's."""
+    runtime = _load_runtime(tmp_path)
+    runtime.bind(_fork_parent(tmp_path))
+    module = _extension_module()
+    provider = CapturingProvider([_text_stream("unused")])
+    _patch_fork_resolution(module, provider)
+
+    agent_tool = _agent_tool(runtime)
+    result = await agent_tool.execute(
+        "call-1",
+        {
+            "prompt": "t",
+            "description": "d",
+            "subagent_type": "fork",
+            "provider": "openai-codex",
+            "model": "haiku",
+            "isolated": True,
+        },
+    )
+    assert "A fork cannot take provider, model, isolated" in result.text
+    assert "inherit_context" in result.text  # the suggested alternative
+    assert provider.calls == []  # nothing was spawned
