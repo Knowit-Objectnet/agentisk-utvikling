@@ -11,6 +11,11 @@ devenv.local.yaml
 # Tau local state
 .tau
 
+# Python telemetry integration tests
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+
 # direnv
 .direnv
 

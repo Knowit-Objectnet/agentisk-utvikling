@@ -5,7 +5,7 @@ let
     doCheck = false;
   });
 
-  tau = pkgs.python312Packages.buildPythonApplication rec {
+  tauRuntime = pkgs.python312Packages.buildPythonApplication rec {
     pname = "tau-ai";
     version = "0.4.6";
     pyproject = true;
@@ -20,6 +20,7 @@ let
     dependencies = with pkgs.python312Packages; [
       anyio
       httpx
+      logfire
       packaging
       pillow
       pydantic
@@ -29,13 +30,46 @@ let
       textual
       typer
     ];
+
+    postInstall = ''
+      cp ${./integrations/tau_logfire.py} "$out/${pkgs.python312.sitePackages}/tau_logfire.py"
+    '';
   };
+
+  # A stable module survives Tau's extension reloads; the entry file is reloaded.
+  logfireExtension = pkgs.writeText "tau-logfire-extension.py" ''
+    from tau_logfire import setup
+  '';
+
+  tau = pkgs.writeShellScriptBin "tau" ''
+    case "''${TAU_LOGFIRE_ENABLED,,}" in
+      1|true|yes|on)
+        exec ${tauRuntime}/bin/tau --extension ${logfireExtension} "$@"
+        ;;
+      *) exec ${tauRuntime}/bin/tau "$@" ;;
+    esac
+  '';
+
+  tauTestPython = pkgs.python312.withPackages (ps: [ (ps.toPythonModule tauRuntime) ps.pytest ]);
 in
 {
+  # Enable Logfire for Tau in this development environment. Keep the write
+  # token in a secret manager or shell environment; never commit it here.
+  env.TAU_LOGFIRE_ENABLED = "1";
+  env.TAU_LOGFIRE_CAPTURE_CONTENT = "1";
+
   # Keep Tau sessions and other local state out of the user-wide profile.
   enterShell = ''
     export TAU_HOME="$PWD/.tau/sessions"
   '';
+
+  scripts.test-tau-logfire = {
+    description = "Test Tau telemetry without contacting Logfire or a model provider";
+    exec = ''
+      export TAU_LOGFIRE_CLI=${tau}/bin/tau
+      exec ${tauTestPython}/bin/python -m pytest -p no:cacheprovider ${./tests/test_tau_logfire.py} "$@"
+    '';
+  };
 
   # Tools used by the PetClinic, I Hate Money, and OpenSpec workshop branches.
   packages = with pkgs; [

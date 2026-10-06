@@ -31,6 +31,11 @@ Then follow `README.md` on that branch.
 
 No Docker and no database server. Tests run locally in seconds.
 
+## Tau observability
+
+The devenv-installed Tau agent supports opt-in Logfire tracing, including system
+prompts, model messages, and tool calls. See [setup and privacy controls](docs/tau-logfire.md).
+
 ## Licences
 
 Each branch carries its app's own licence and a `THIRD-PARTY-NOTICES.md`. Spring PetClinic is
