@@ -528,27 +528,37 @@ def flush() -> None:
 
 
 def setup(tau: ExtensionAPI) -> None:
+    if not enabled(os.environ.get("TAU_LOGFIRE_ENABLED")):
+        return
+
+    def session_start(event: Any, context: Any) -> None:
+        # setup runs before bind(): cwd and UI are only available here.
+        initialize(tau, context)
+
+    tau.on("session_start", session_start)
+
+
+def initialize(tau: ExtensionAPI, context: Any) -> None:
     global _configured
     if not enabled(os.environ.get("TAU_LOGFIRE_ENABLED")):
         return
     try:
         token = os.environ.get("LOGFIRE_TOKEN", "").strip() or None
-        data_dir = tau.context.paths.home / "logfire"
+        data_dir = context.paths.home / "logfire"
         if token is None:
             # The Logfire wizard saves SDK credentials here, not below TAU_HOME.
             data_dir = Path(
-                os.environ.get("LOGFIRE_CREDENTIALS_DIR")
-                or tau.context.cwd / ".logfire"
+                os.environ.get("LOGFIRE_CREDENTIALS_DIR") or context.cwd / ".logfire"
             )
             credentials = data_dir / "logfire_credentials.json"
             if data_dir.is_symlink() or credentials.is_symlink():
-                tau.context.ui.notify(
+                context.ui.notify(
                     "Logfire disabled: credential paths must not be symlinks.",
                     level="warning",
                 )
                 return
             if not credentials.is_file():
-                tau.context.ui.notify(
+                context.ui.notify(
                     "Logfire disabled: set LOGFIRE_TOKEN or run the Logfire wizard.",
                     level="warning",
                 )
@@ -582,6 +592,6 @@ def setup(tau: ExtensionAPI) -> None:
         tau.on("agent_event", observer.handle)
         tau.on("session_shutdown", observer.shutdown)
     except Exception:  # noqa: BLE001 - configuration must not break the agent
-        tau.context.ui.notify(
+        context.ui.notify(
             "Logfire disabled: telemetry configuration failed.", level="warning"
         )

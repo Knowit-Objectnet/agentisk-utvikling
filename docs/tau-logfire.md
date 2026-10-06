@@ -80,7 +80,8 @@ TAU_LOGFIRE_ENABLED=0 tau
 | `TAU_LOGFIRE_MAX_MESSAGES` | `100` | Most recent conversation messages captured per model request (maximum `1000`) |
 
 The defaults above are the extension defaults. This demonstration branch sets
-`TAU_LOGFIRE_ENABLED=1` and `TAU_LOGFIRE_CAPTURE_CONTENT=1` in `devenv.nix`.
+`TAU_LOGFIRE_ENABLED=1`, `TAU_LOGFIRE_CAPTURE_CONTENT=1`, and the maximum
+capture budgets (`100000` characters and `1000` messages) in `devenv.nix`.
 
 The Python SDK automatically selects the EU or US endpoint from your write
 token; `--region=eu` on the wizard chooses where to authenticate and select the
@@ -92,8 +93,18 @@ project's region.
 Console logging and metric export are disabled to avoid interfering with Tau's
 TUI, print output, and RPC protocol. When using an exported token, local Logfire
 state is kept below `TAU_HOME`; when using wizard credentials, the SDK uses their
-directory. Missing credentials disable tracing with a warning, never an
-interactive login or automatic project creation inside Tau.
+directory. Initialization runs on `session_start`, after Tau binds its working directory
+and UI (not during extension `setup`). Missing credentials disable tracing with
+a warning, never an interactive login or automatic project creation inside Tau.
+
+After changing the integration, rebuild/reload devenv and restart Tau: `/reload`
+cannot replace the already imported, Nix-packaged `tau_logfire` Python module.
+
+For larger prompt/history capture, set `TAU_LOGFIRE_MAX_CONTENT_CHARS=100000`
+and `TAU_LOGFIRE_MAX_MESSAGES=1000` before launching Tau. These are the supported
+maximums, not a guarantee of exhaustive logging. Check `tau.content.truncated`
+and `tau.content.omitted_messages` on model spans. Secret redaction, binary
+omission, and the wire-payload boundaries below still apply.
 
 The launcher supplies a packaged extension using `--extension`; user-supplied
 extensions and CLI arguments still work. Tau intentionally loads explicit

@@ -57,6 +57,8 @@ in
   # write credentials in the shell environment or gitignored .logfire directory.
   env.TAU_LOGFIRE_ENABLED = "1";
   env.TAU_LOGFIRE_CAPTURE_CONTENT = "1";
+  env.TAU_LOGFIRE_MAX_CONTENT_CHARS = "100000";
+  env.TAU_LOGFIRE_MAX_MESSAGES = "1000";
 
   # Keep Tau sessions and other local state out of the user-wide profile.
   enterShell = ''
