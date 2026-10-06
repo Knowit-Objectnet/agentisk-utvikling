@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import logfire
+import logfire._internal.config as logfire_config
 import pytest
 import tau_logfire
 from opentelemetry import trace
@@ -241,6 +242,15 @@ def test_deep_and_wide_tool_data_is_bounded():
     assert len(json.dumps(result)) < 1000
 
 
+@pytest.mark.parametrize("block", [TextContent(text=""), ImageContent(data="", mime_type="image/png")])
+def test_empty_and_image_message_blocks_are_bounded(block):
+    encoder = ContentEncoder(40)
+    result = encoder.message(UserMessage(content=[block] * 1000))
+    assert encoder.truncated
+    assert len(result["parts"]) <= 40
+    assert len(json.dumps(result)) < 3000
+
+
 @pytest.mark.parametrize("reason", ["error", "aborted"])
 def test_model_errors_and_cancellation(exporter, context, reason):
     obs = observer()
@@ -332,12 +342,15 @@ def test_telemetry_failure_does_not_escape_and_warns_once(context, capsys):
     assert "credentials" not in stderr
 
 
-def test_disabled_and_missing_token_never_configure(monkeypatch):
+def test_disabled_and_missing_credentials_never_configure(monkeypatch, tmp_path):
     api = Mock()
+    api.context.cwd = tmp_path
+    api.context.paths.home = tmp_path / "tau-home"
     configure = Mock()
     monkeypatch.setattr(logfire, "configure", configure)
     monkeypatch.delenv("TAU_LOGFIRE_ENABLED", raising=False)
     monkeypatch.delenv("LOGFIRE_TOKEN", raising=False)
+    monkeypatch.delenv("LOGFIRE_CREDENTIALS_DIR", raising=False)
     tau_logfire.setup(api)
     api.on.assert_not_called()
     monkeypatch.setenv("TAU_LOGFIRE_ENABLED", "1")
@@ -359,8 +372,113 @@ def test_setup_configures_once_across_reload_and_retains_scrubbing(monkeypatch, 
     tau_logfire.setup(api)
     configure.assert_called_once()
     assert configure.call_args.kwargs["console"] is False
+    assert configure.call_args.kwargs["token"] == "not-a-real-token"
+    assert configure.call_args.kwargs["data_dir"] == tmp_path / "logfire"
     assert isinstance(configure.call_args.kwargs["scrubbing"], logfire.ScrubbingOptions)
     assert api.on.call_count == 4  # two subscriptions per generation
+
+
+@pytest.mark.parametrize("custom_directory", [False, True])
+def test_setup_uses_wizard_credentials_without_exported_token(monkeypatch, tmp_path, custom_directory):
+    api = Mock()
+    api.context.cwd = tmp_path
+    api.context.paths.home = tmp_path / "tau-home"
+    credentials_dir = tmp_path / ("custom-logfire" if custom_directory else ".logfire")
+    credentials_dir.mkdir()
+    (credentials_dir / "logfire_credentials.json").write_text("{}")
+    monkeypatch.setenv("TAU_LOGFIRE_ENABLED", "1")
+    monkeypatch.delenv("LOGFIRE_TOKEN", raising=False)
+    monkeypatch.delenv("LOGFIRE_SEND_TO_LOGFIRE", raising=False)
+    if custom_directory:
+        monkeypatch.setenv("LOGFIRE_CREDENTIALS_DIR", str(credentials_dir))
+    else:
+        monkeypatch.delenv("LOGFIRE_CREDENTIALS_DIR", raising=False)
+    monkeypatch.setattr(tau_logfire, "_configured", False)
+    monkeypatch.setattr(tau_logfire.atexit, "register", Mock())
+    configure = Mock()
+    monkeypatch.setattr(logfire, "configure", configure)
+    tau_logfire.setup(api)
+    assert configure.call_args.kwargs["token"] is None
+    assert configure.call_args.kwargs["data_dir"] == credentials_dir
+    assert configure.call_args.kwargs["send_to_logfire"] == "if-token-present"
+    assert api.on.call_count == 2
+    api.context.ui.notify.assert_not_called()
+
+
+@pytest.mark.parametrize("symlink_directory", [False, True])
+def test_setup_rejects_symlinked_wizard_credentials(monkeypatch, tmp_path, symlink_directory):
+    api = Mock()
+    api.context.cwd = tmp_path
+    api.context.paths.home = tmp_path / "tau-home"
+    target = tmp_path / "actual-credentials"
+    target.mkdir()
+    (target / "logfire_credentials.json").write_text("{}")
+    credentials_dir = tmp_path / ".logfire"
+    if symlink_directory:
+        credentials_dir.symlink_to(target, target_is_directory=True)
+    else:
+        credentials_dir.mkdir()
+        (credentials_dir / "logfire_credentials.json").symlink_to(target / "logfire_credentials.json")
+    monkeypatch.setenv("TAU_LOGFIRE_ENABLED", "1")
+    monkeypatch.delenv("LOGFIRE_TOKEN", raising=False)
+    monkeypatch.delenv("LOGFIRE_CREDENTIALS_DIR", raising=False)
+    configure = Mock()
+    monkeypatch.setattr(logfire, "configure", configure)
+    tau_logfire.setup(api)
+    configure.assert_not_called()
+    api.on.assert_not_called()
+    assert "symlinks" in api.context.ui.notify.call_args.args[0]
+
+
+def test_explicit_export_setting_is_left_to_sdk(monkeypatch, tmp_path):
+    api = Mock()
+    api.context.paths.home = tmp_path
+    monkeypatch.setenv("TAU_LOGFIRE_ENABLED", "1")
+    monkeypatch.setenv("LOGFIRE_TOKEN", "not-a-real-token")
+    monkeypatch.setenv("LOGFIRE_SEND_TO_LOGFIRE", "false")
+    monkeypatch.setattr(tau_logfire, "_configured", False)
+    monkeypatch.setattr(tau_logfire.atexit, "register", Mock())
+    configure = Mock()
+    monkeypatch.setattr(logfire, "configure", configure)
+    tau_logfire.setup(api)
+    assert configure.call_args.kwargs["send_to_logfire"] is None
+
+
+def test_real_sdk_loads_wizard_credentials_and_exports_to_eu_offline(monkeypatch, tmp_path, context):
+    api = Mock()
+    api.context.cwd = tmp_path
+    api.context.paths.home = tmp_path / "tau-home"
+    credentials_dir = tmp_path / ".logfire"
+    credentials_dir.mkdir()
+    (credentials_dir / "logfire_credentials.json").write_text(json.dumps({
+        "token": "not-a-real-token",
+        "project_name": "test-project",
+        "project_url": "https://logfire-eu.pydantic.dev/test-org/test-project",
+        "logfire_api_url": "https://logfire-eu.pydantic.dev",
+    }))
+    exporter = InMemorySpanExporter()
+    create_exporter = Mock(return_value=exporter)
+    # Replace only the network boundaries; retain real SDK credential loading,
+    # region selection, span processing, and batched export.
+    monkeypatch.setattr(logfire_config, "BodySizeCheckingOTLPSpanExporter", create_exporter)
+    monkeypatch.setattr(logfire_config.LogfireConfig, "_initialize_credentials_from_token", Mock(return_value=None))
+    monkeypatch.setattr(tau_logfire, "_configured", False)
+    monkeypatch.setattr(tau_logfire.atexit, "register", Mock())
+    monkeypatch.setenv("TAU_LOGFIRE_ENABLED", "1")
+    for name in ("LOGFIRE_TOKEN", "LOGFIRE_CREDENTIALS_DIR", "LOGFIRE_SEND_TO_LOGFIRE", "LOGFIRE_BASE_URL"):
+        monkeypatch.delenv(name, raising=False)
+    try:
+        tau_logfire.setup(api)
+        api.context.ui.notify.assert_not_called()
+        assert create_exporter.call_args.kwargs["endpoint"] == "https://logfire-eu.pydantic.dev/v1/traces"
+        assert create_exporter.call_args.kwargs["headers"]["Authorization"] == "not-a-real-token"
+        obs = api.on.call_args_list[0].args[1].__self__
+        start(obs, context)
+        finish(obs, context)
+        assert logfire.force_flush(timeout_millis=2000)
+        assert "chat test-model" in spans(exporter)
+    finally:
+        logfire.configure(send_to_logfire=False, console=False, metrics=False, data_dir=tmp_path)
 
 
 def test_invalid_config_is_nonfatal(monkeypatch):
@@ -442,8 +560,8 @@ def test_real_extension_loading_and_reload(context, monkeypatch, tmp_path):
     original_configure = logfire.configure
 
     def configure_offline(**kwargs):
+        kwargs["send_to_logfire"] = False
         return original_configure(
-            send_to_logfire=False,
             additional_span_processors=[SimpleSpanProcessor(exporter)],
             **kwargs,
         )

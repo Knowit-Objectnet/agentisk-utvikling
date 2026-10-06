@@ -10,6 +10,7 @@ import sys
 from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from weakref import WeakSet
 
@@ -154,6 +155,8 @@ class ContentEncoder:
                 if self.remaining <= 0:
                     self.truncated = True
                     break
+                # Empty text and image blocks must also consume structural budget.
+                self.remaining -= 1
                 kind = getattr(block, "type", "")
                 if kind == "text":
                     parts.append({"type": "text", "content": self.text(block.text)})
@@ -170,13 +173,15 @@ class ContentEncoder:
                     parts.append(
                         {
                             "type": "tool_call",
-                            "id": block.id,
-                            "name": block.name,
+                            "id": self.text(block.id),
+                            "name": self.text(block.name),
                             "arguments": self.value(block.arguments),
                         }
                     )
                 elif kind == "image":
-                    parts.append({"type": "blob", "mime_type": block.mime_type})
+                    parts.append(
+                        {"type": "blob", "mime_type": self.text(block.mime_type)}
+                    )
         if role == "toolResult":
             parts = [
                 {
@@ -526,18 +531,41 @@ def setup(tau: ExtensionAPI) -> None:
     global _configured
     if not enabled(os.environ.get("TAU_LOGFIRE_ENABLED")):
         return
-    if not os.environ.get("LOGFIRE_TOKEN", "").strip():
-        tau.context.ui.notify(
-            "Logfire disabled: LOGFIRE_TOKEN is not set.", level="warning"
-        )
-        return
     try:
+        token = os.environ.get("LOGFIRE_TOKEN", "").strip() or None
+        data_dir = tau.context.paths.home / "logfire"
+        if token is None:
+            # The Logfire wizard saves SDK credentials here, not below TAU_HOME.
+            data_dir = Path(
+                os.environ.get("LOGFIRE_CREDENTIALS_DIR")
+                or tau.context.cwd / ".logfire"
+            )
+            credentials = data_dir / "logfire_credentials.json"
+            if data_dir.is_symlink() or credentials.is_symlink():
+                tau.context.ui.notify(
+                    "Logfire disabled: credential paths must not be symlinks.",
+                    level="warning",
+                )
+                return
+            if not credentials.is_file():
+                tau.context.ui.notify(
+                    "Logfire disabled: set LOGFIRE_TOKEN or run the Logfire wizard.",
+                    level="warning",
+                )
+                return
         options = CaptureOptions.from_environment()
         if not _configured:
             import logfire
 
             logfire.configure(
-                token=os.environ["LOGFIRE_TOKEN"],
+                token=token,
+                # Never launch SDK login/project creation in Tau's TUI or RPC.
+                # An explicit export setting still takes precedence.
+                send_to_logfire=(
+                    None
+                    if os.environ.get("LOGFIRE_SEND_TO_LOGFIRE")
+                    else "if-token-present"
+                ),
                 service_name="tau",
                 service_version="0.4.6",
                 console=False,
@@ -545,7 +573,7 @@ def setup(tau: ExtensionAPI) -> None:
                 inspect_arguments=False,
                 add_baggage_to_attributes=False,
                 scrubbing=logfire.ScrubbingOptions(),
-                data_dir=tau.context.paths.home / "logfire",
+                data_dir=data_dir,
             )
             _configured = True
             atexit.register(flush)

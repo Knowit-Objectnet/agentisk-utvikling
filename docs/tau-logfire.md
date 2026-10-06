@@ -6,12 +6,48 @@ not involved. No upstream Tau source changes or provider monkey-patches are used
 
 ## Enable
 
-Reload your devenv/direnv environment after changing `devenv.nix`. Create a
-Logfire project and supply its **write token** through your existing secret
-manager or environment, then run:
+Reload your devenv/direnv environment after changing `devenv.nix`. This
+demonstration branch enables both tracing and content capture in devenv by
+default. The extension itself is opt-in outside this environment.
+
+Since Tau is already instrumented, connect this directory to the existing
+project without launching another coding agent:
 
 ```bash
-export LOGFIRE_TOKEN="<your project write token>"
+devenv shell
+logfire-cli --region eu --org psoland auth
+logfire-cli --region eu --org psoland init use --name starter-project --permission send
+tau
+```
+
+The devenv provides `logfire-cli` through a pinned `uvx` wrapper. The first run
+downloads the CLI (requiring network access); later runs reuse uv's tool cache.
+No global installation is needed.
+
+Complete the browser login when prompted. `init use` creates a send-only write
+token and saves it locally; skip it if this directory already has valid
+credentials for that project. No token export or tracing flags are needed in
+this branch's devenv.
+
+Alternatively, you can run the full guided setup wizard:
+
+```bash
+logfire-cli --region=eu --org 'psoland' wizard --project 'starter-project' --task 'instrumentation'
+```
+
+The wizard guides a coding agent through setup; it is not required to install
+this extension again. Its local SDK write credential in
+`.logfire/logfire_credentials.json` is supported automatically when you run Tau
+from that project directory. The `.logfire/` directory is gitignored. Use
+`LOGFIRE_CREDENTIALS_DIR` if the credential directory is elsewhere; do not commit
+it or use symlinked credential paths.
+
+Alternatively, supply your project's **write token** through your existing secret
+manager or environment. An exported token takes precedence over local wizard
+credentials. Then run:
+
+```bash
+export LOGFIRE_TOKEN="<your project write token>" # omit when using wizard credentials
 export TAU_LOGFIRE_ENABLED=1
 export TAU_LOGFIRE_CAPTURE_CONTENT=1
 tau
@@ -24,9 +60,9 @@ In Logfire's Live view, filter by service `tau`. Expand a `Tau agent run`, its
 turns, `chat <model>` spans, and `execute_tool <name>` spans. Model spans use
 GenAI message attributes for Logfire's LLM panel and token badges.
 
-Tracing is disabled by default. **The content flag is necessary to see the
-system prompt, conversation, and tool arguments/results.** Without it, only
-metadata is exported. Disable tracing without changing your environment setup:
+**The content flag is necessary to see the system prompt, conversation, and tool
+arguments/results.** This branch sets it in devenv; without it, only metadata
+is exported. Disable tracing without changing your environment setup:
 
 ```bash
 TAU_LOGFIRE_ENABLED=0 tau
@@ -37,16 +73,27 @@ TAU_LOGFIRE_ENABLED=0 tau
 | Variable | Default | Purpose |
 |---|---|---|
 | `TAU_LOGFIRE_ENABLED` | off | Enable tracing (`1`, `true`, `yes`, or `on`, case-insensitive) |
-| `LOGFIRE_TOKEN` | unset | Logfire project write token; missing token disables tracing with a warning |
+| `LOGFIRE_TOKEN` | unset | Project write token; takes precedence over local wizard credentials |
+| `LOGFIRE_CREDENTIALS_DIR` | `.logfire` in Tau's working directory | SDK credential directory when no token is exported |
 | `TAU_LOGFIRE_CAPTURE_CONTENT` | off | Opt into prompts, responses, exposed thinking, and tool payloads |
 | `TAU_LOGFIRE_MAX_CONTENT_CHARS` | `16000` | Text/structure budget per content attribute (maximum `100000`) |
 | `TAU_LOGFIRE_MAX_MESSAGES` | `100` | Most recent conversation messages captured per model request (maximum `1000`) |
 
+The defaults above are the extension defaults. This demonstration branch sets
+`TAU_LOGFIRE_ENABLED=1` and `TAU_LOGFIRE_CAPTURE_CONTENT=1` in `devenv.nix`.
+
+The Python SDK automatically selects the EU or US endpoint from your write
+token; `--region=eu` on the wizard chooses where to authenticate and select the
+project. You do not need to set `LOGFIRE_BASE_URL` for an ordinary EU project.
 Logfire's normal environment settings, such as `LOGFIRE_ENVIRONMENT` and
-`LOGFIRE_BASE_URL` (if your project is in another region), remain available.
+`LOGFIRE_SEND_TO_LOGFIRE`, remain available. `LOGFIRE_BASE_URL` can override the
+endpoint for special deployments; avoid an override that conflicts with your
+project's region.
 Console logging and metric export are disabled to avoid interfering with Tau's
-TUI, print output, and RPC protocol. Local Logfire state is kept below the
-existing `TAU_HOME`, not in the user-wide profile.
+TUI, print output, and RPC protocol. When using an exported token, local Logfire
+state is kept below `TAU_HOME`; when using wizard credentials, the SDK uses their
+directory. Missing credentials disable tracing with a warning, never an
+interactive login or automatic project creation inside Tau.
 
 The launcher supplies a packaged extension using `--extension`; user-supplied
 extensions and CLI arguments still work. Tau intentionally loads explicit

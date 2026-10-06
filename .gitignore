@@ -16,6 +16,9 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
+# Logfire wizard's local write credentials
+.logfire/
+
 # direnv
 .direnv
 

@@ -53,8 +53,8 @@ let
   tauTestPython = pkgs.python312.withPackages (ps: [ (ps.toPythonModule tauRuntime) ps.pytest ]);
 in
 {
-  # Enable Logfire for Tau in this development environment. Keep the write
-  # token in a secret manager or shell environment; never commit it here.
+  # This demonstration branch captures Tau activity by default. Keep Logfire
+  # write credentials in the shell environment or gitignored .logfire directory.
   env.TAU_LOGFIRE_ENABLED = "1";
   env.TAU_LOGFIRE_CAPTURE_CONTENT = "1";
 
@@ -62,6 +62,13 @@ in
   enterShell = ''
     export TAU_HOME="$PWD/.tau/sessions"
   '';
+
+  scripts.logfire-cli = {
+    description = "Run the pinned Logfire setup CLI through uv's tool cache";
+    exec = ''
+      exec ${pkgs.uv}/bin/uvx logfire-cli==0.1.10 "$@"
+    '';
+  };
 
   scripts.test-tau-logfire = {
     description = "Test Tau telemetry without contacting Logfire or a model provider";
